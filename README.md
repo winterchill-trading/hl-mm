@@ -14,6 +14,7 @@ runs under tests and under a live event loop.
 opam switch create 5.2.0+ox --repos ox=git+https://github.com/oxcaml/opam-repository.git,default
 opam pin add -n fixed-decimal https://github.com/winterchill-trading/fixed-decimal.git
 opam pin add -n hl-protocol https://github.com/winterchill-trading/hl-protocol.git
+opam pin add -n hl-client https://github.com/winterchill-trading/hl-client.git
 opam install . --deps-only --with-test
 dune build && dune test
 ```

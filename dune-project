@@ -16,4 +16,14 @@
 (package
  (name hl-mm)
  (synopsis "Market maker for hl-sim")
- (depends ocaml dune core hl-protocol fixed-decimal ppx_jane))
+ (depends
+  ocaml
+  dune
+  core
+  core_unix
+  async
+  hl-client
+  hl-protocol
+  fixed-decimal
+  ppx_jane
+  uri))

@@ -16,6 +16,7 @@ jobs:
             default: https://github.com/ocaml/opam-repository.git
       - run: opam pin add -y -n fixed-decimal https://github.com/winterchill-trading/fixed-decimal.git
       - run: opam pin add -y -n hl-protocol https://github.com/winterchill-trading/hl-protocol.git
+      - run: opam pin add -y -n hl-client https://github.com/winterchill-trading/hl-client.git
       - run: opam install . --deps-only --with-test
       - run: opam exec -- dune build
       - run: opam exec -- dune test

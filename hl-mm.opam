@@ -10,9 +10,13 @@ depends: [
   "ocaml"
   "dune" {>= "3.17"}
   "core"
+  "core_unix"
+  "async"
+  "hl-client"
   "hl-protocol"
   "fixed-decimal"
   "ppx_jane"
+  "uri"
   "odoc" {with-doc}
 ]
 build: [
