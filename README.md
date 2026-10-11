@@ -4,9 +4,12 @@ Market maker for hl-sim
 
 Built with [OxCaml](https://oxcaml.org) and the Jane Street library stack (Base, Core, Async).
 
-This repository holds the pure strategy core: no networking, no clocks, no randomness.
-Every function takes the current time and exchange data as arguments, so the same code
-runs under tests and under a live event loop.
+The strategy core is pure: no networking, no clocks, no randomness. Every function takes
+the current time and exchange data as arguments, so the same code runs under tests and
+under the live event loop (`Live`), which connects it to an exchange through
+[hl-client](https://github.com/winterchill-trading/hl-client). The `hl-mm` executable
+runs it against [hl-sim](https://github.com/winterchill-trading/hl-sim) or any
+Hyperliquid-compatible API that accepts unsigned requests.
 
 ## Build
 
@@ -18,6 +21,91 @@ opam pin add -n hl-client https://github.com/winterchill-trading/hl-client.git
 opam install . --deps-only --with-test
 dune build && dune test
 ```
+
+## Running
+
+```sh
+dune exec hl-sim -- -port 3000 -seed 42      # in the hl-sim checkout
+dune exec hl-mm -- -base-url http://localhost:3000 -run-for 60
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-base-url` | `http://localhost:3000` | HTTP root; the websocket is `<url>/ws` |
+| `-address` | `0x0000000000000000000000000000000000006d6d` | account to trade as (sent as `X-Address`) |
+| `-coin` | `BTC` | coin to quote; asset index, tick and lot come from `meta` and the book |
+| `-levels` | 3 | quote levels per side |
+| `-size` | about 100 USD (0.001 BTC) | order size per level |
+| `-half-spread-bps` | 3 | first level's distance from the reservation price |
+| `-skew-bps` | 4 | reservation price shift at full inventory |
+| `-max-position` | 10 x size | absolute position limit (max notional is 1.5x that at the mid) |
+| `-requote-ms` | 1000 | requote and open-orders poll interval |
+| `-run-for` | none | stop after N seconds, cancel all, print the report |
+| `-summary-secs` | 10 | interval of the position/PnL/quotes summary log |
+| `-log-level` | info | `debug`, `info`, `warn` or `error` |
+
+Logs go to stderr: every plan and fill (with running PnL) at `info`, a summary of mode,
+book, position, PnL and resting quotes every `-summary-secs`, order updates at `debug`.
+On SIGINT or SIGTERM (or after `-run-for`) it cancels every resting order on the coin and
+prints the report to stdout; a second SIGINT exits at once. The position is not
+flattened on exit.
+
+### Live loop
+
+- Websocket subscriptions `l2Book(coin)`, `orderUpdates(address)` and
+  `userFills(address)` feed `Strategy.on_book` and `Strategy.on_fill`. Fill snapshots
+  (sent on every (re)subscription) are applied only for fills since start; fills are
+  de-duplicated by trade id.
+- `openOrders` and `clearinghouseState` are polled over HTTP every `-requote-ms`, after
+  every executed plan (the strategy waits for that snapshot before placing again), when
+  an order update reports an order leaving the book, and after a websocket reconnect
+  (hl-client reconnects and resubscribes by itself).
+- `Strategy.tick` runs after every book update, fill and poll. A plan becomes at most two
+  requests: one `cancel` action with all cancels, then one `order` action with all
+  places.
+- Ticks, plan execution and polls run one at a time on an Async sequencer, so a snapshot
+  never predates a plan the strategy already sent. Requests are coalesced: at most one
+  tick and one poll wait in the queue.
+
+### End to end
+
+`scripts/e2e.sh` builds hl-sim and hl-mm, starts the simulator (seed 42) on a free port,
+runs hl-mm with `-run-for 60`, prints the report and stops the simulator. It assumes
+hl-mm is checked out inside a dune workspace next to `hl-sim`, `hl-client`,
+`hl-protocol`, `fixed-decimal` and `order-book` (a parent directory holding a
+`dune-workspace` file with `(lang dune 3.17)`), so everything builds from source without
+opam pins. `OPAM_SWITCH`, `DUNE_BUILD_DIR`, `SEED`, `RUN_FOR`, `PORT` and `LOG_DIR`
+override the defaults; extra arguments go to hl-mm.
+
+### Example run
+
+```
+$ scripts/e2e.sh
+--- hl-mm report ---
+elapsed          60.3s
+fills            72 (72 maker)
+volume           6956.3115 USD
+realized pnl     -0.3024 USD
+unrealized pnl   -0.0063 USD
+fees             0.6956 USD
+total pnl        -1.0043 USD
+final position   0.00152
+last mid         99886.5
+account value    999999.0299 USD
+plans            151
+orders           434 placed, 1 rejected, 366 cancelled
+  rejected    1 x Post only order would have immediately matched, bbo was 99941@99950. asset=0
+ws reconnects    0
+mode             Running
+```
+
+Without hl-mm the noise traders leave a book 25 to 35 bps wide, so the 3 bps quotes
+sit at the top of the book and are taken by their market orders and by their resting
+orders that the random walk leaves crossed. The PnL is mostly the 1 bp maker fee plus
+adverse selection against that walk. Account value moves by about the total PnL; the
+difference is the simulator marking positions at its reference price rather than the book
+mid. Runs are not bit-for-bit reproducible: the seed fixes the noise flow, but the timing
+of hl-mm's requests changes the matching.
 
 ## Modules
 
@@ -36,6 +124,7 @@ All modules live under `Hl_mm` and use the wire types of
 | `Reconciler` | Minimal plan from resting orders to the desired ladder; deterministic cloids |
 | `Risk` | Kill switch (`Ok \| Halt reason`) and the flatten plan |
 | `Strategy` | State machine: `on_book`, `on_fill`, `on_open_orders`, `on_clearinghouse`, `tick ~now` |
+| `Live` | Async event loop over hl-client: websocket feeds, HTTP polls, plan execution, shutdown and the run report |
 
 ## Strategy
 

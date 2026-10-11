@@ -86,7 +86,7 @@ module Report = struct
   let to_string_hum t =
     let opt f = Option.value_map ~default:"-" ~f in
     let lines =
-      [ sprintf "elapsed          %s" (Time_ns.Span.to_string_hum ~decimals:1 t.elapsed)
+      [ sprintf "elapsed          %.1fs" (Time_ns.Span.to_sec t.elapsed)
       ; sprintf "fills            %d (%d maker)" t.fills t.maker_fills
       ; sprintf "volume           %s USD" (usd t.volume)
       ; sprintf "realized pnl     %s USD" (usd t.realized_pnl)
