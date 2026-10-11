@@ -1,6 +1,6 @@
 (library
  (name hl_mm)
  (public_name hl-mm)
- (libraries core hl-protocol fixed-decimal)
+ (libraries core async hl-client hl-protocol fixed-decimal uri)
  (preprocess
   (pps ppx_jane)))
