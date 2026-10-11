@@ -1,0 +1,8 @@
+(library
+ (name hl_mm_test)
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core hl-protocol hl-mm)
+ (preprocess
+  (pps ppx_jane)))
