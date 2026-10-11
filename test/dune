@@ -3,6 +3,6 @@
  (inline_tests
   (flags
    (:standard -source-tree-root .)))
- (libraries core hl-protocol hl-mm)
+ (libraries async cohttp-async core hl-client hl-mm hl-protocol hl-sim uri)
  (preprocess
   (pps ppx_jane)))

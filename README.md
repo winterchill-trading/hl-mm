@@ -18,6 +18,8 @@ opam switch create 5.2.0+ox --repos ox=git+https://github.com/oxcaml/opam-reposi
 opam pin add -n fixed-decimal https://github.com/winterchill-trading/fixed-decimal.git
 opam pin add -n hl-protocol https://github.com/winterchill-trading/hl-protocol.git
 opam pin add -n hl-client https://github.com/winterchill-trading/hl-client.git
+opam pin add -n order-book https://github.com/winterchill-trading/order-book.git   # tests only
+opam pin add -n hl-sim https://github.com/winterchill-trading/hl-sim.git           # tests only
 opam install . --deps-only --with-test
 dune build && dune test
 ```
@@ -106,6 +108,14 @@ adverse selection against that walk. Account value moves by about the total PnL;
 difference is the simulator marking positions at its reference price rather than the book
 mid. Runs are not bit-for-bit reproducible: the seed fixes the noise flow, but the timing
 of hl-mm's requests changes the matching.
+
+## Tests
+
+`dune test` runs the strategy's expect and quickcheck tests and an integration test
+(`test/test_live.ml`) that starts `Hl_sim.Server` on a free port with a static book from
+a second account, runs `Live` until it quotes the expected ladder, sends a taker order
+into the best bid, checks the maker fill reaches the inventory, then stops and checks
+that no orders are left resting.
 
 ## Modules
 

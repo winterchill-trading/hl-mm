@@ -17,6 +17,9 @@ jobs:
       - run: opam pin add -y -n fixed-decimal https://github.com/winterchill-trading/fixed-decimal.git
       - run: opam pin add -y -n hl-protocol https://github.com/winterchill-trading/hl-protocol.git
       - run: opam pin add -y -n hl-client https://github.com/winterchill-trading/hl-client.git
+      # hl-sim runs in the integration test (test/test_live.ml) and needs order-book.
+      - run: opam pin add -y -n order-book https://github.com/winterchill-trading/order-book.git
+      - run: opam pin add -y -n hl-sim https://github.com/winterchill-trading/hl-sim.git
       - run: opam install . --deps-only --with-test
       - run: opam exec -- dune build
       - run: opam exec -- dune test

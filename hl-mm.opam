@@ -17,6 +17,8 @@ depends: [
   "fixed-decimal"
   "ppx_jane"
   "uri"
+  "cohttp-async" {with-test}
+  "hl-sim" {with-test}
   "odoc" {with-doc}
 ]
 build: [

@@ -26,4 +26,6 @@
   hl-protocol
   fixed-decimal
   ppx_jane
-  uri))
+  uri
+  (cohttp-async :with-test)
+  (hl-sim :with-test)))
