@@ -1,0 +1,16 @@
+; The main module is [main] rather than [hl_mm] so that it does not clash with the
+; [hl_mm] library's wrapper module.
+
+(executable
+ (name main)
+ (public_name hl-mm)
+ (libraries
+  async
+  core
+  core_unix.command_unix
+  hl-client
+  hl-mm
+  hl-protocol
+  uri)
+ (preprocess
+  (pps ppx_jane)))
