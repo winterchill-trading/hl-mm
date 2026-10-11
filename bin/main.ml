@@ -31,8 +31,10 @@ let params_for
     match size with
     | Some size -> Size.of_string size
     | None ->
-      let size = Fx.size_of_notional (Usd.of_int 100) instrument.mid in
-      Size.of_units (Fx.ceil_to (Size.to_units size) ~step:(Size.to_units instrument.lot))
+      (* nearest lot, at least one *)
+      let units = Size.to_units (Fx.size_of_notional (Usd.of_int 100) instrument.mid) in
+      let lot = Size.to_units instrument.lot in
+      Size.of_units (Int.max lot ((units + (lot / 2)) / lot * lot))
   in
   let max_position =
     match max_position with
