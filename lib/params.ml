@@ -19,6 +19,7 @@ type t =
   ; order_ttl_ms : int
   ; gamma : float
   ; vol_window : int
+  ; max_vol_bps : float
   ; max_drawdown : Usd.t
   ; max_data_age_ms : int
   ; flatten_slippage_bps : float
@@ -43,6 +44,7 @@ let btc =
   ; order_ttl_ms = 60_000
   ; gamma = 0.5
   ; vol_window = 100
+  ; max_vol_bps = 10.
   ; max_drawdown = Usd.of_string "50"
   ; max_data_age_ms = 5_000
   ; flatten_slippage_bps = 50.
@@ -67,6 +69,7 @@ let validate t =
     ; t.order_ttl_ms > 0, "order_ttl_ms must be positive"
     ; Float.(t.gamma >= 0.), "gamma must be non-negative"
     ; t.vol_window >= 1, "vol_window must be positive"
+    ; Float.(t.max_vol_bps >= 0.), "max_vol_bps must be non-negative"
     ; Usd.is_positive t.max_drawdown, "max_drawdown must be positive"
     ; t.max_data_age_ms > 0, "max_data_age_ms must be positive"
     ; Float.(t.flatten_slippage_bps > 0.), "flatten_slippage_bps must be positive"

@@ -29,6 +29,9 @@ type t =
   ; order_ttl_ms : int (** resting orders older than this are replaced *)
   ; gamma : float (** risk aversion, per bps of variance *)
   ; vol_window : int (** EWMA span (in book updates) of the volatility estimate *)
+  ; max_vol_bps : float
+  (** cap on the volatility fed to the quoter, so a jump in the book cannot blow up the
+      [gamma * sigma^2] term *)
   ; max_drawdown : Usd.t (** kill switch: peak-to-current PnL drop *)
   ; max_data_age_ms : int (** kill switch: book age before quotes are pulled *)
   ; flatten_slippage_bps : float (** limit price offset of the reduce-only IOC flatten *)
@@ -37,7 +40,7 @@ type t =
 
 (** Defaults for BTC perpetuals around 100k on Hyperliquid (asset 0, integer tick, 5 size
     decimals): 3 levels of 0.001 BTC, 3 bps half-spread, 2 bps spacing, 0.01 BTC / 1500
-    USD position limit, 50 USD drawdown limit. *)
+    USD position limit, volatility capped at 10 bps, 50 USD drawdown limit. *)
 val btc : t
 
 (** Checks the invariants the quoter relies on (positive tick, lot and size, positive

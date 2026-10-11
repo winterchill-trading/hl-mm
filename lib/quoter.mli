@@ -1,6 +1,7 @@
 (** The desired quote ladder, as a pure function of parameters, market and inventory.
 
-    With microprice [m], per-update volatility [sigma] (bps), position [x]:
+    With microprice [m], per-update volatility [sigma = min(vol_bps, max_vol_bps)] (bps),
+    position [x]:
 
     - capacity [cap = min(max_position, max_notional / mid)]
     - inventory ratio [q = clamp((x - inventory_target) / cap, -1, 1)]
@@ -23,7 +24,7 @@ module Model : sig
   type t =
     { microprice : Price.t
     ; mid : Price.t
-    ; vol_bps : float
+    ; vol_bps : float (** after the [max_vol_bps] cap *)
     ; capacity : Size.t
     ; inventory_ratio : float
     ; reservation : Price.t

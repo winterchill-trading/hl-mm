@@ -23,7 +23,7 @@ let capacity (p : Params.t) ~mid =
 let model (p : Params.t) market inventory =
   match Market_state.microprice market, Market_state.mid market with
   | Some microprice, Some mid ->
-    let vol_bps = Market_state.vol_bps market in
+    let vol_bps = Float.min (Market_state.vol_bps market) p.max_vol_bps in
     let capacity = capacity p ~mid in
     let excess = Size.(Inventory.position inventory - p.inventory_target) in
     let inventory_ratio =
