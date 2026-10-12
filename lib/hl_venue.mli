@@ -17,6 +17,7 @@
 open! Core
 open! Async
 open Hl_protocol
+
 (** Over a bare config, requests are unsigned (the simulator's convention). *)
 include Mm_core.Venue.S with type config = Hl_client.Config.t
 
