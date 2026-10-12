@@ -2,14 +2,16 @@
 
 Market maker for hl-sim
 
-Built with [OxCaml](https://oxcaml.org) and the Jane Street library stack (Base, Core, Async).
+Built with [OxCaml](https://oxcaml.org) and the Jane Street library stack (Base, Core,
+Async).
 
-The strategy core is pure: no networking, no clocks, no randomness. Every function takes
-the current time and exchange data as arguments, so the same code runs under tests and
-under the live event loop (`Live`), which connects it to an exchange through
-[hl-client](https://github.com/winterchill-trading/hl-client). The `hl-mm` executable
-runs it against [hl-sim](https://github.com/winterchill-trading/hl-sim) or any
-Hyperliquid-compatible API that accepts unsigned requests.
+The strategy, risk checks and the live event loop live in
+[mm-core](https://github.com/winterchill-trading/mm-core), which is venue-neutral. This
+repository is the Hyperliquid side: `Hl_venue` implements `Mm_core.Venue.S` over
+[hl-client](https://github.com/winterchill-trading/hl-client), and the `hl-mm`
+executable runs `Mm_core.Live.Make (Hl_venue)` against
+[hl-sim](https://github.com/winterchill-trading/hl-sim) or any Hyperliquid-compatible API
+that accepts unsigned requests.
 
 ## Build
 
@@ -19,6 +21,7 @@ opam pin add -n fixed-decimal https://github.com/winterchill-trading/fixed-decim
 opam pin add -n exchange-core https://github.com/winterchill-trading/exchange-core.git
 opam pin add -n hl-protocol https://github.com/winterchill-trading/hl-protocol.git
 opam pin add -n hl-client https://github.com/winterchill-trading/hl-client.git
+opam pin add -n mm-core https://github.com/winterchill-trading/mm-core.git
 opam pin add -n order-book https://github.com/winterchill-trading/order-book.git   # tests only
 opam pin add -n exchange-core-engine https://github.com/winterchill-trading/exchange-core.git  # tests only
 opam pin add -n hl-sim https://github.com/winterchill-trading/hl-sim.git           # tests only
@@ -54,31 +57,35 @@ On SIGINT or SIGTERM (or after `-run-for`) it cancels every resting order on the
 prints the report to stdout; a second SIGINT exits at once. The position is not
 flattened on exit.
 
-### Live loop
+### Hyperliquid adapter (`Hl_venue`)
 
-- Websocket subscriptions `l2Book(coin)`, `orderUpdates(address)` and
-  `userFills(address)` feed `Strategy.on_book` and `Strategy.on_fill`. Fill snapshots
-  (sent on every (re)subscription) are applied only for fills since start; fills are
-  de-duplicated by trade id.
-- `openOrders` and `clearinghouseState` are polled over HTTP every `-requote-ms`, after
-  every executed plan (the strategy waits for that snapshot before placing again), when
-  an order update reports an order leaving the book, and after a websocket reconnect
-  (hl-client reconnects and resubscribes by itself).
-- `Strategy.tick` runs after every book update, fill and poll. A plan becomes at most two
-  requests: one `cancel` action with all cancels, then one `order` action with all
-  places.
-- Ticks, plan execution and polls run one at a time on an Async sequencer, so a snapshot
-  never predates a plan the strategy already sent. Requests are coalesced: at most one
-  tick and one poll wait in the queue.
+- `connect` fetches `meta` (asset indices), opens the websocket and subscribes to
+  `orderUpdates(address)` and `userFills(address)`; `books` subscribes to `l2Book(coin)`.
+  hl-client reconnects and resubscribes by itself and `Hl_venue` then runs the
+  `on_reconnect` hooks, so the loop resyncs open orders and the account.
+- Fill snapshots (sent on every (re)subscription) contribute only fills since connect,
+  and fills are de-duplicated by trade id, as `Venue.S` requires.
+- `openOrders` and `clearinghouseState` back `open_orders` and `account`; the
+  clearinghouse becomes an `Account_view` (equity = account value). Timestamps go from
+  milliseconds to nanoseconds.
+- `instrument` returns the tick valid at the current mid (integers or 5 significant
+  figures, at most `6 - szDecimals` decimals).
+- `place` sends one `order` action; per-order errors are mapped back to `Reject_reason`
+  by their wording (unknown wording becomes `Unsupported msg`). Market orders and client
+  ids that are not 128-bit hex are rejected locally. `cancel` sends one `cancel` action;
+  orders that were already gone are logged at debug, not errors.
+
+The loop itself (polling, sequencing, coalescing, shutdown) is described in the mm-core
+README.
 
 ### End to end
 
 `scripts/e2e.sh` builds hl-sim and hl-mm, starts the simulator (seed 42) on a free port,
 runs hl-mm with `-run-for 60`, prints the report and stops the simulator. It assumes
 hl-mm is checked out inside a dune workspace next to `hl-sim`, `hl-client`,
-`hl-protocol`, `fixed-decimal`, `order-book` and `exchange-core` (a parent directory holding a
-`dune-workspace` file with `(lang dune 3.17)`), so everything builds from source without
-opam pins. `OPAM_SWITCH`, `DUNE_BUILD_DIR`, `SEED`, `RUN_FOR`, `PORT` and `LOG_DIR`
+`hl-protocol`, `mm-core`, `fixed-decimal`, `order-book` and `exchange-core` (a parent
+directory holding a `dune-workspace` file with `(lang dune 3.17)`), so everything builds
+from source without opam pins. `OPAM_SWITCH`, `DUNE_BUILD_DIR`, `SEED`, `RUN_FOR`, `PORT` and `LOG_DIR`
 override the defaults; extra arguments go to hl-mm.
 
 ### Example run
@@ -87,19 +94,19 @@ override the defaults; extra arguments go to hl-mm.
 $ scripts/e2e.sh
 --- hl-mm report ---
 elapsed          60.3s
-fills            72 (72 maker)
-volume           6956.3115 USD
-realized pnl     -0.3024 USD
-unrealized pnl   -0.0063 USD
-fees             0.6956 USD
-total pnl        -1.0043 USD
-final position   0.00152
-last mid         99886.5
-account value    999999.0299 USD
-plans            151
-orders           434 placed, 1 rejected, 366 cancelled
-  rejected    1 x Post only order would have immediately matched, bbo was 99941@99950. asset=0
-ws reconnects    0
+fills            61 (61 maker)
+volume           5996.9116 USD
+realized pnl     0.1003 USD
+unrealized pnl   0.0039 USD
+fees             0.5997 USD
+total pnl        -0.4954 USD
+final position   -0.00009
+last mid         99903.5
+account value    999999.517 USD
+plans            146
+orders           410 placed, 1 rejected, 351 cancelled
+  rejected    1 x post-only order would cross, bbo 99863@99884
+reconnects       0
 mode             Running
 ```
 
@@ -111,118 +118,26 @@ difference is the simulator marking positions at its reference price rather than
 mid. Runs are not bit-for-bit reproducible: the seed fixes the noise flow, but the timing
 of hl-mm's requests changes the matching.
 
+The cancellation count comes from `canceled` order updates, so it also includes IOC
+remainders. The account value is from the last clearinghouse snapshot that decoded: with
+a tiny position on a large balance the simulator reports a `liquidationPx` with 11
+integer digits, which fixed-decimal's parser rejects, and those snapshots are logged as
+errors and skipped.
+
 ## Tests
 
-`dune test` runs the strategy's expect and quickcheck tests and an integration test
-(`test/test_live.ml`) that starts `Hl_sim.Server` on a free port with a static book from
-a second account, runs `Live` until it quotes the expected ladder, sends a taker order
-into the best bid, checks the maker fill reaches the inventory, then stops and checks
-that no orders are left resting.
+`dune test` runs the conversion tests of `Hl_venue` (reject wording, order update
+statuses, order requests) and an integration test (`test/test_live.ml`) that starts
+`Hl_sim.Server` on a free port with a static book from a second account, runs
+`Mm_core.Live.Make (Hl_venue)` until it quotes the expected ladder, sends a taker order
+into the best bid, checks the maker fill reaches the inventory, then stops and checks that
+no orders are left resting. The strategy's own tests are in mm-core.
 
 ## Modules
 
-All modules live under `Hl_mm` and use the wire types of
-[hl-protocol](https://github.com/winterchill-trading/hl-protocol) (`Price`, `Size`, `Usd`,
-`L2_book`, `Open_order`, `User_fill`, `Clearinghouse_state`, `Order_request`, ...).
-
 | Module | Description |
 | --- | --- |
-| `Params` | Strategy parameters and BTC defaults (`Params.btc`), with `validate` |
-| `Market_state` | Last book, mid, microprice and EWMA volatility of mid returns |
-| `Inventory` | Position, average entry, realized/unrealized PnL and fees from fills, synced from clearinghouse snapshots |
-| `Quote` | One desired order: side, level, price, size |
-| `Quoter` | Pure `quote : Params.t -> Market_state.t -> Inventory.t -> Quote.t list` |
-| `Action` | `Keep oid \| Cancel oid \| Place Order_request.t` |
-| `Reconciler` | Minimal plan from resting orders to the desired ladder; deterministic cloids |
-| `Risk` | Kill switch (`Ok \| Halt reason`) and the flatten plan |
-| `Strategy` | State machine: `on_book`, `on_fill`, `on_open_orders`, `on_clearinghouse`, `tick ~now` |
-| `Live` | Async event loop over hl-client: websocket feeds, HTTP polls, plan execution, shutdown and the run report |
+| `Hl_mm.Hl_venue` | `Mm_core.Venue.S` over hl-client, with `config = Hl_client.Config.t`; `tick_of_mid`; pure `Convert` functions |
 
-## Strategy
-
-The quoter is a simplified Avellaneda-Stoikov market maker. All spreads are in basis
-points (bps) of the price.
-
-### Market inputs
-
-```
-mid         = (best_bid + best_ask) / 2
-microprice  = (best_bid * ask_size + best_ask * bid_size) / (bid_size + ask_size)
-r_k         = ln(mid_k / mid_(k-1))                      on each two-sided book
-var_k       = (1 - a) * var_(k-1) + a * r_k^2,  a = 2 / (vol_window + 1)
-sigma       = min(10_000 * sqrt(var), max_vol_bps)       per-update volatility, bps
-```
-
-### Ladder
-
-```
-cap   = min(max_position, max_notional / mid)            position capacity, base units
-q     = clamp((position - inventory_target) / cap, -1, 1)
-v     = gamma * sigma^2                                  risk term, bps
-r     = microprice * (1 - q * (skew_bps + v) / 10_000)   reservation price
-delta = base_half_spread_bps + v / 2                     half-spread, bps
-d_i   = delta + i * level_spacing_bps                    level i = 0 .. levels-1
-
-bid_i = floor_tick(r * (1 - d_i / 10_000))   capped at best_ask - tick and bid_(i-1) - tick
-ask_i = ceil_tick (r * (1 + d_i / 10_000))   floored at best_bid + tick and ask_(i-1) + tick
-```
-
-When long (`q > 0`) both sides move down: the bid backs away and the ask gets more
-aggressive, and vice versa when short. Higher volatility widens the spread and
-strengthens the skew.
-
-Sizes are `order_size` per level, truncated to the lot, handed out from level 0 until the
-room on that side runs out:
-
-```
-room_bid = cap - position
-room_ask = cap + position
-```
-
-so a side at the limit gets no quotes, and filling every quote never takes the position
-beyond `cap <= max_position`. A property test checks that quotes never cross (each other
-or the book) and never breach the limit.
-
-### Reconciliation
-
-Each desired quote keeps the closest resting order on the same side with exactly its size,
-within `requote_threshold_bps` of its price and younger than `order_ttl_ms`. Unmatched
-resting orders are cancelled; unmatched quotes are placed as post-only (`Alo`) limit
-orders. Client order ids encode `coin (8 bytes) | side (1) | level (1) | generation (6)`,
-so they are reproducible and readable.
-
-### Risk
-
-| Check | Halt | Response |
-| --- | --- | --- |
-| `abs(position) > max_position` | sticky | cancel all, reduce-only IOC for the whole position at `mid -/+ flatten_slippage_bps` |
-| `peak_pnl - pnl > max_drawdown`, `pnl = realized + unrealized(mid) - fees` | sticky | same |
-| no two-sided book | until data | cancel all |
-| `now - book_time > max_data_age_ms` | until data | cancel all |
-
-### Strategy loop
-
-`tick ~now` folds the above together. It requotes when the last plan is older than
-`requote_interval_ms`, the mid moved by `requote_threshold_bps`, or the position changed.
-After sending a plan it waits for an open-orders snapshot (up to `requote_interval_ms`)
-before planning again, and without one it only cancels, so orders are never placed twice.
-
-### Inventory accounting
-
-Average cost: fills that grow the position move the entry to the size-weighted mean;
-fills that reduce it realize `closed * (px - entry) * sign(position)`; a fill that flips
-the position reopens the remainder at the fill price. A clearinghouse snapshot overwrites
-position and entry; fills at or before the snapshot time then add only their fee and the
-exchange's `closedPnl`. Fills are de-duplicated by trade id.
-
-### Defaults (`Params.btc`)
-
-| Parameter | Value |
-| --- | --- |
-| tick / lot | 1 / 0.00001 |
-| order size x levels | 0.001 x 3 |
-| base half-spread / level spacing | 3 bps / 2 bps |
-| skew / gamma / max vol | 4 bps / 0.5 / 10 bps |
-| max position / max notional | 0.01 BTC / 1500 USD |
-| requote threshold / interval / order ttl | 1 bps / 1 s / 60 s |
-| max drawdown / max data age / flatten slippage | 50 USD / 5 s / 50 bps |
+Strategy, parameters and their defaults: see
+[mm-core](https://github.com/winterchill-trading/mm-core).
