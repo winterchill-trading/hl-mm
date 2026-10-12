@@ -8,9 +8,11 @@
   async
   core
   core_unix.command_unix
+  exchange-core
   hl-client
   hl-mm
   hl-protocol
+  mm-core
   uri)
  (preprocess
   (pps ppx_jane)))

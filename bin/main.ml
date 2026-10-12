@@ -2,6 +2,7 @@ open! Core
 open! Async
 open Hl_protocol
 open Hl_mm
+open Mm_core
 
 (* "mm" in ASCII. *)
 let default_address = "0x0000000000000000000000000000000000006d6d"
@@ -15,10 +16,14 @@ let address_arg =
     | _ -> raise_s [%message "expected 0x followed by 40 hex digits" s])
 ;;
 
-(* Per-coin defaults: about $100 per order and 10 orders of position room, which for BTC
-   at 100k reproduces [Params.btc] (0.001, 0.01 and 1500 USD). *)
+module Live_hl = Mm_core.Live.Make (Hl_venue)
+
+(* Per-coin defaults ([Params.for_instrument]): about $100 per order and 10 orders of
+   position room, which for BTC at 100k reproduces [Params.btc] (0.001, 0.01 and 1500
+   USD). *)
 let params_for
-  (instrument : Live.Instrument.t)
+  instrument
+  ~mid
   ~levels
   ~size
   ~half_spread_bps
@@ -26,37 +31,22 @@ let params_for
   ~max_position
   ~requote_ms
   =
-  let base = Params.btc in
-  let order_size =
-    match size with
-    | Some size -> Size.of_string size
-    | None ->
-      (* nearest lot, at least one *)
-      let units = Size.to_units (Fx.size_of_notional (Usd.of_int 100) instrument.mid) in
-      let lot = Size.to_units instrument.lot in
-      Size.of_units (Int.max lot ((units + (lot / 2)) / lot * lot))
-  in
-  let max_position =
-    match max_position with
-    | Some max_position -> Size.of_string max_position
-    | None -> Size.scale order_size ~by:10
-  in
-  let max_notional =
-    Usd.of_float (1.5 *. Size.to_float max_position *. Price.to_float instrument.mid)
-  in
-  { base with
-    coin = instrument.coin
-  ; asset = instrument.asset
-  ; tick = instrument.tick
-  ; lot = instrument.lot
-  ; order_size
-  ; levels = Option.value levels ~default:base.levels
-  ; base_half_spread_bps = Option.value half_spread_bps ~default:base.base_half_spread_bps
-  ; skew_bps = Option.value skew_bps ~default:base.skew_bps
-  ; max_position
-  ; max_notional
-  ; requote_interval_ms = Option.value requote_ms ~default:base.requote_interval_ms
-  }
+  Or_error.try_with_join (fun () ->
+    let base =
+      Params.for_instrument
+        instrument
+        ~mid
+        ?order_size:(Option.map size ~f:Size.of_string)
+        ?max_position:(Option.map max_position ~f:Size.of_string)
+    in
+    Params.validate
+      { base with
+        levels = Option.value levels ~default:base.levels
+      ; base_half_spread_bps =
+          Option.value half_spread_bps ~default:base.base_half_spread_bps
+      ; skew_bps = Option.value skew_bps ~default:base.skew_bps
+      ; requote_interval_ms = Option.value requote_ms ~default:base.requote_interval_ms
+      })
 ;;
 
 let command =
@@ -128,43 +118,35 @@ let command =
      fun () ->
        Log.Global.set_output [ Log.Output.stderr () ];
        Log.Global.set_level log_level;
-       let open Deferred.Or_error.Let_syntax in
        let client =
          Hl_client.Config.create ~address ~base_url:(Uri.of_string base_url) ()
        in
-       let%bind instrument = Live.Instrument.fetch client (Coin.of_string coin) in
-       let%bind params =
-         Deferred.return
-           (Or_error.try_with_join (fun () ->
-              params_for
-                instrument
+       Log.Global.info_s
+         [%message
+           "connecting"
+             (address : Address.t)
+             ~base_url:(Uri.to_string client.base_url)
+             ~ws_url:(Uri.to_string client.ws_url)];
+       let stop =
+         Mm_core.Live.stop_signal ?run_for:(Option.map run_for ~f:Time_ns.Span.of_sec) ()
+       in
+       let%map.Deferred.Or_error report =
+         Live_hl.connect_and_run
+           client
+           ~symbol:(Coin.of_string coin)
+           ~params:
+             (params_for
                 ~levels
                 ~size
                 ~half_spread_bps
                 ~skew_bps
                 ~max_position
-                ~requote_ms
-              |> Params.validate))
-       in
-       let stop = Ivar.create () in
-       Signal.handle [ Signal.int; Signal.term ] ~f:(fun signal ->
-         if Ivar.is_full stop
-         then (
-           Log.Global.error_s [%message "second signal, exiting" (signal : Signal.t)];
-           Shutdown.shutdown 130)
-         else (
-           Log.Global.info_s
-             [%message "signal received, shutting down" (signal : Signal.t)];
-           Ivar.fill_if_empty stop ()));
-       Option.iter run_for ~f:(fun seconds ->
-         upon (Clock_ns.after (Time_ns.Span.of_sec seconds)) (Ivar.fill_if_empty stop));
-       let%map report =
-         Live.run
-           { client; params; summary_interval = Time_ns.Span.of_sec summary_secs }
-           ~stop:(Ivar.read stop)
+                ~requote_ms)
+           ~summary_interval:(Time_ns.Span.of_sec summary_secs)
+           ~stop
        in
        print_endline "--- hl-mm report ---";
-       print_endline (Live.Report.to_string_hum report))
+       print_endline (Mm_core.Live.Report.to_string_hum report))
 ;;
 
 let () = Command_unix.run command
