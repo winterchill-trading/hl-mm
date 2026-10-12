@@ -9,9 +9,9 @@ The strategy, risk checks and the live event loop live in
 [mm-core](https://github.com/winterchill-trading/mm-core), which is venue-neutral. This
 repository is the Hyperliquid side: `Hl_venue` implements `Mm_core.Venue.S` over
 [hl-client](https://github.com/winterchill-trading/hl-client), and the `hl-mm`
-executable runs `Mm_core.Live.Make (Hl_venue)` against
-[hl-sim](https://github.com/winterchill-trading/hl-sim) or any Hyperliquid-compatible API
-that accepts unsigned requests.
+executable runs `Mm_core.Live.Make (Hl_venue.Trading)` against
+[hl-sim](https://github.com/winterchill-trading/hl-sim) (unsigned requests) or
+Hyperliquid's testnet (requests signed with `HL_PRIVATE_KEY`). It refuses mainnet.
 
 For one binary that runs the same strategy on Hyperliquid, Binance or Bybit, see
 [market-maker](https://github.com/winterchill-trading/market-maker); it uses `Hl_venue`
@@ -42,8 +42,9 @@ dune exec hl-mm -- -base-url http://localhost:3000 -run-for 60
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-base-url` | `http://localhost:3000` | HTTP root; the websocket is `<url>/ws` |
-| `-address` | `0x0000000000000000000000000000000000006d6d` | account to trade as (sent as `X-Address`) |
+| `-base-url` | `http://localhost:3000` | HTTP root; the websocket is `<url>/ws`; mainnet is refused |
+| `-testnet` | off | trade on Hyperliquid's testnet, signing with the key in `HL_PRIVATE_KEY` |
+| `-address` | `0x0000000000000000000000000000000000006d6d` (the key's with `-testnet`) | account to trade as (sent as `X-Address`) |
 | `-coin` | `BTC` | coin to quote; asset index, tick and lot come from `meta` and the book |
 | `-levels` | 3 | quote levels per side |
 | `-size` | about 100 USD (0.001 BTC) | order size per level |
@@ -76,7 +77,24 @@ prints the report to stdout, ending with the loop's tick-to-order latency (book 
 to plan sent: count, p50, p99, max); a second SIGINT exits at once. The position is not
 flattened on exit.
 
+### Testnet
+
+```sh
+HL_PRIVATE_KEY=0x... dune exec hl-mm -- -testnet -run-for 60
+```
+
+Exchange requests are signed by hl-client's `Signing` (EIP-712 over the msgpack action
+hash, testnet domain) and the account is the key's address. A run with a fresh, unfunded
+key gets `User or API Wallet 0x... does not exist.` back for its first plan, naming the
+key's own address, which shows the exchange recovered the right signer; nothing is placed.
+Fund a testnet account from the faucet to quote for real. There is no mainnet switch.
+
 ### Hyperliquid adapter (`Hl_venue`)
+
+- `Hl_venue` takes a bare `Hl_client.Config.t` and sends unsigned requests (hl-sim, and
+  the `market-maker` binary). `Hl_venue.Trading` is the same venue over an hl-client
+  `trading` handle (`Client.trading ?key config`), which signs every order and cancel
+  when it holds a key. A `read_only` handle does not type-check as its config.
 
 - `connect` fetches `meta` (asset indices), opens the websocket and subscribes to
   `orderUpdates(address)` and `userFills(address)`; `books` subscribes to `l2Book(coin)`.
@@ -170,14 +188,18 @@ requote, and checks that the ladder still has exactly one order per level.
 injecting wrapper in the style of mm-core's memory venue, against hl-sim with slow acks:
 seeded local rejects (the rejected levels are placed again, never doubled) and a `place`
 that times out while its orders rest (they are adopted from the next snapshot, not placed
-again). `test/test_params_file.ml` covers the params file and its validation. The strategy's own tests are in mm-core.
+again). `test/test_trading.ml` runs the loop over `Hl_venue.Trading` with a throwaway
+key against hl-sim with a request journal, and recovers the signer of every journaled
+order and cancel from its signature. `test/must_fail` compiles a call of
+`Hl_venue.Trading.connect` with a read-only handle and pins the type error.
+`test/test_params_file.ml` covers the params file and its validation. The strategy's own tests are in mm-core.
 
 ## Modules
 
 | Module | Description |
 | --- | --- |
 | `Hl_mm.Params_file` | `-params` overrides: apply a `(field value)` sexp to `Mm_core.Params.t` and validate |
-| `Hl_mm.Hl_venue` | `Mm_core.Venue.S` over hl-client, with `config = Hl_client.Config.t`; `tick_of_mid`; pure `Convert` functions |
+| `Hl_mm.Hl_venue` | `Mm_core.Venue.S` over hl-client, with `config = Hl_client.Config.t` (unsigned); `Trading` with `config = Hl_client.Client.trading Hl_client.Client.t` (signed); `tick_of_mid`; pure `Convert` functions |
 
 Strategy, parameters and their defaults: see
 [mm-core](https://github.com/winterchill-trading/mm-core).
