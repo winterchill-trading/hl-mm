@@ -16,9 +16,11 @@ Hyperliquid-compatible API that accepts unsigned requests.
 ```sh
 opam switch create 5.2.0+ox --repos ox=git+https://github.com/oxcaml/opam-repository.git,default
 opam pin add -n fixed-decimal https://github.com/winterchill-trading/fixed-decimal.git
+opam pin add -n exchange-core https://github.com/winterchill-trading/exchange-core.git
 opam pin add -n hl-protocol https://github.com/winterchill-trading/hl-protocol.git
 opam pin add -n hl-client https://github.com/winterchill-trading/hl-client.git
 opam pin add -n order-book https://github.com/winterchill-trading/order-book.git   # tests only
+opam pin add -n exchange-core-engine https://github.com/winterchill-trading/exchange-core.git  # tests only
 opam pin add -n hl-sim https://github.com/winterchill-trading/hl-sim.git           # tests only
 opam install . --deps-only --with-test
 dune build && dune test
@@ -74,7 +76,7 @@ flattened on exit.
 `scripts/e2e.sh` builds hl-sim and hl-mm, starts the simulator (seed 42) on a free port,
 runs hl-mm with `-run-for 60`, prints the report and stops the simulator. It assumes
 hl-mm is checked out inside a dune workspace next to `hl-sim`, `hl-client`,
-`hl-protocol`, `fixed-decimal` and `order-book` (a parent directory holding a
+`hl-protocol`, `fixed-decimal`, `order-book` and `exchange-core` (a parent directory holding a
 `dune-workspace` file with `(lang dune 3.17)`), so everything builds from source without
 opam pins. `OPAM_SWITCH`, `DUNE_BUILD_DIR`, `SEED`, `RUN_FOR`, `PORT` and `LOG_DIR`
 override the defaults; extra arguments go to hl-mm.
