@@ -143,3 +143,80 @@ let%expect_test "live loop quotes, fills and cancels against hl-sim" =
   [%expect {| |}];
   Cohttp_async.Server.close http
 ;;
+
+let%expect_test "slow acks: no order is placed twice" =
+  Log.Global.set_output [];
+  (* Every /exchange ack arrives 500ms late, longer than the 200ms requote interval; the
+     orders themselves rest at once and their updates reach the websocket first. *)
+  let server =
+    Hl_sim.Server.create
+      ~config:
+        { Hl_sim.Server.Config.default with response_delay = Time_ns.Span.of_int_ms 500 }
+      (Hl_sim.Adapt.create_exchange ())
+  in
+  let%bind http = Hl_sim.Server.listen server ~port:0 in
+  let base_url =
+    Uri.make ~scheme:"http" ~host:"127.0.0.1" ~port:(Hl_sim.Server.port http) ()
+  in
+  let client address = Hl_client.Config.create ~address ~base_url () in
+  let%bind (_ : Exchange_response.t Or_error.t) =
+    Hl_client.Exchange.place_orders
+      (client maker)
+      [ order ~is_buy:true ~px:"99900" ~sz:"0.01" ~tif:Gtc
+      ; order ~is_buy:false ~px:"100100" ~sz:"0.01" ~tif:Gtc
+      ]
+  in
+  let%bind venue = Hl_venue.connect (client mm) >>| ok_exn in
+  let%bind live =
+    Live_hl.start
+      venue
+      { params = { Mm_core.Params.btc with requote_interval_ms = 200 }
+      ; summary_interval = Time_ns.Span.of_int_sec 60
+      }
+    >>| ok_exn
+  in
+  let%bind () =
+    wait_until ~what:"quotes" (fun () -> (Live_hl.report live).orders_placed >= 6)
+  in
+  (* Ten requote intervals with nothing changing: the ladder must stay as it is. *)
+  let%bind () = Clock_ns.after (Time_ns.Span.of_int_sec 2) in
+  let%bind () = print_open_orders (client mm) in
+  [%expect
+    {|
+    A 0.001@100070
+    A 0.001@100050
+    A 0.001@100030
+    B 0.001@99970
+    B 0.001@99950
+    B 0.001@99930
+    |}];
+  (* A better bid moves the microprice: the requote cancels and places with slow acks. *)
+  let%bind (_ : Exchange_response.t Or_error.t) =
+    Hl_client.Exchange.place_orders
+      (client maker)
+      [ order ~is_buy:true ~px:"99990" ~sz:"0.01" ~tif:Gtc ]
+  in
+  let%bind () = Clock_ns.after (Time_ns.Span.of_int_sec 3) in
+  let%bind () = print_open_orders (client mm) in
+  [%expect
+    {|
+    A 0.001@100097
+    A 0.001@100070
+    A 0.001@100050
+    B 0.001@99996
+    B 0.001@99970
+    B 0.001@99950
+    |}];
+  let%bind report = Live_hl.stop live in
+  print_s
+    [%message
+      ""
+        ~plans:(report.plans : int)
+        ~placed:(report.orders_placed : int)
+        ~rejected:(report.orders_rejected : int)
+        ~cancelled:(report.orders_cancelled : int)];
+  [%expect {| ((plans 2) (placed 8) (rejected 0) (cancelled 8)) |}];
+  let%bind () = print_open_orders (client mm) in
+  [%expect {| |}];
+  Cohttp_async.Server.close http
+;;
