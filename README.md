@@ -51,14 +51,29 @@ dune exec hl-mm -- -base-url http://localhost:3000 -run-for 60
 | `-skew-bps` | 4 | reservation price shift at full inventory |
 | `-max-position` | 10 x size | absolute position limit (max notional is 1.5x that at the mid) |
 | `-requote-ms` | 1000 | requote and open-orders poll interval |
+| `-max-actions-per-sec` | 100 | kill switch: more cancels and places than this in a second |
+| `-soft-max-position` | none | beyond this position, stop quoting the side that grows it |
+| `-params` | none | parameter overrides file, applied after the flags (see below) |
 | `-run-for` | none | stop after N seconds, cancel all, print the report |
 | `-summary-secs` | 10 | interval of the position/PnL/quotes summary log |
 | `-log-level` | info | `debug`, `info`, `warn` or `error` |
 
+`-params FILE` holds a sexp of `(field value)` pairs, any field of `Mm_core.Params.t`;
+fields left out keep their value from the defaults and flags. The result goes through
+`Params.validate`, so e.g. a `soft_max_position` above `max_position` or a zero
+`max_actions_per_sec` stops hl-mm before it quotes:
+
+```
+((levels 5)
+ (max_actions_per_sec 50)
+ (soft_max_position (0.005)))
+```
+
 Logs go to stderr: every plan and fill (with running PnL) at `info`, a summary of mode,
 book, position, PnL and resting quotes every `-summary-secs`, order updates at `debug`.
 On SIGINT or SIGTERM (or after `-run-for`) it cancels every resting order on the coin and
-prints the report to stdout; a second SIGINT exits at once. The position is not
+prints the report to stdout, ending with the loop's tick-to-order latency (book update
+to plan sent: count, p50, p99, max); a second SIGINT exits at once. The position is not
 flattened on exit.
 
 ### Hyperliquid adapter (`Hl_venue`)
@@ -149,12 +164,19 @@ statuses, order requests) and an integration test (`test/test_live.ml`) that sta
 into the best bid, checks the maker fill reaches the inventory, then stops and checks that
 no orders are left resting. A second run delays every `/exchange` ack by 500 ms (longer
 than the 200 ms requote interval) while the orders rest at once, moves the book to force a
-requote, and checks that the ladder still has exactly one order per level. The strategy's own tests are in mm-core.
+requote, and checks that the ladder still has exactly one order per level.
+
+`test/test_live_bugs.ml` runs the loop through `Bugged_venue.Make (Hl_venue)`, a fault
+injecting wrapper in the style of mm-core's memory venue, against hl-sim with slow acks:
+seeded local rejects (the rejected levels are placed again, never doubled) and a `place`
+that times out while its orders rest (they are adopted from the next snapshot, not placed
+again). `test/test_params_file.ml` covers the params file and its validation. The strategy's own tests are in mm-core.
 
 ## Modules
 
 | Module | Description |
 | --- | --- |
+| `Hl_mm.Params_file` | `-params` overrides: apply a `(field value)` sexp to `Mm_core.Params.t` and validate |
 | `Hl_mm.Hl_venue` | `Mm_core.Venue.S` over hl-client, with `config = Hl_client.Config.t`; `tick_of_mid`; pure `Convert` functions |
 
 Strategy, parameters and their defaults: see
