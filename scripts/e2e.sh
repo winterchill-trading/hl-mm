@@ -11,7 +11,8 @@
 #   <root>/fixed-decimal  <root>/order-book  <root>/exchange-core  <root>/mm-core
 #
 # Environment overrides: OPAM_SWITCH (5.2.0+ox), DUNE_BUILD_DIR (<root>/_build-hl-mm),
-# SEED (42), RUN_FOR (60), PORT (a free port), LOG_DIR (a temporary directory).
+# SEED (42), RUN_FOR (60), PORT (a free port), LOG_DIR (a temporary directory),
+# RESPONSE_DELAY_MS (0: hl-sim's delay of every /exchange ack, to test slow acks).
 # Extra arguments are passed to hl-mm, e.g. scripts/e2e.sh -half-spread-bps 2.
 set -euo pipefail
 
@@ -33,14 +34,16 @@ switch="${OPAM_SWITCH:-5.2.0+ox}"
 export DUNE_BUILD_DIR="${DUNE_BUILD_DIR:-$root/_build-hl-mm}"
 seed="${SEED:-42}"
 run_for="${RUN_FOR:-60}"
+response_delay_ms="${RESPONSE_DELAY_MS:-0}"
 log_dir="${LOG_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/hl-mm-e2e.XXXXXX")}"
 mkdir -p "$log_dir"
 
 echo "e2e: building hl-sim and hl-mm (switch $switch, build dir $DUNE_BUILD_DIR)" >&2
-(cd "$repo" && opam exec --switch "$switch" -- dune build ../hl-sim/bin/main.exe ./bin/main.exe)
+(cd "$root" && opam exec --switch "$switch" -- \
+  dune build --root . hl-sim/bin/main.exe "$(basename "$repo")/bin/main.exe")
 build="$DUNE_BUILD_DIR/default"
 sim_exe="$build/hl-sim/bin/main.exe"
-mm_exe="$build/hl-mm/bin/main.exe"
+mm_exe="$build/$(basename "$repo")/bin/main.exe"
 
 port="${PORT:-$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')}"
 
@@ -53,8 +56,10 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "e2e: starting hl-sim on port $port (seed $seed), log $log_dir/sim.log" >&2
-"$sim_exe" -port "$port" -seed "$seed" >"$log_dir/sim.log" 2>&1 &
+echo "e2e: starting hl-sim on port $port (seed $seed, ack delay ${response_delay_ms}ms)," \
+  "log $log_dir/sim.log" >&2
+"$sim_exe" -port "$port" -seed "$seed" -response-delay-ms "$response_delay_ms" \
+  >"$log_dir/sim.log" 2>&1 &
 sim_pid=$!
 
 for _ in $(seq 1 50); do
