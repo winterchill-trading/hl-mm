@@ -13,6 +13,10 @@ executable runs `Mm_core.Live.Make (Hl_venue)` against
 [hl-sim](https://github.com/winterchill-trading/hl-sim) or any Hyperliquid-compatible API
 that accepts unsigned requests.
 
+For one binary that runs the same strategy on Hyperliquid, Binance or Bybit, see
+[market-maker](https://github.com/winterchill-trading/market-maker); it uses `Hl_venue`
+from this repository's `hl-mm` library.
+
 ## Build
 
 ```sh
