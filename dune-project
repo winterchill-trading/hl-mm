@@ -22,6 +22,8 @@
   core
   core_unix
   async
+  exchange-core
+  mm-core
   hl-client
   hl-protocol
   fixed-decimal
