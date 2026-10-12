@@ -63,7 +63,7 @@ let print_open_orders config =
 
 let%expect_test "live loop quotes, fills and cancels against hl-sim" =
   Log.Global.set_output [];
-  let server = Hl_sim.Server.create (Hl_sim.Exchange.create ()) in
+  let server = Hl_sim.Server.create (Hl_sim.Adapt.create_exchange ()) in
   let%bind http = Hl_sim.Server.listen server ~port:0 in
   let base_url =
     Uri.make ~scheme:"http" ~host:"127.0.0.1" ~port:(Hl_sim.Server.port http) ()
