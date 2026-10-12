@@ -6,6 +6,7 @@ open Mm_core
 
 (* "mm" in ASCII. *)
 let default_address = "0x0000000000000000000000000000000000006d6d"
+let default_base_url = "http://localhost:3000"
 
 let address_arg =
   Command.Arg_type.create (fun s ->
@@ -16,7 +17,7 @@ let address_arg =
     | _ -> raise_s [%message "expected 0x followed by 40 hex digits" s])
 ;;
 
-module Live_hl = Mm_core.Live.Make (Hl_venue)
+module Live_hl = Mm_core.Live.Make (Hl_venue.Trading)
 
 (* Per-coin defaults ([Params.for_instrument]): about $100 per order and 10 orders of
    position room, which for BTC at 100k reproduces [Params.btc] (0.001, 0.01 and 1500
@@ -62,25 +63,50 @@ let params_for
     | Some path -> Params_file.load path ~base:flags)
 ;;
 
+(* hl-sim (unsigned, the account from -address) or Hyperliquid's testnet (signed with
+   HL_PRIVATE_KEY, the account is the key's). Mainnet is refused. *)
+let trading_handle ~testnet ~base_url ~address =
+  let module Client = Hl_client.Client in
+  if testnet
+  then (
+    match base_url with
+    | Some _ -> Or_error.error_string "-base-url and -testnet cannot be combined"
+    | None ->
+      Client.trading_of_env ~is_mainnet:false (Hl_client.Config.testnet ?address ()))
+  else (
+    let base_url = Uri.of_string (Option.value base_url ~default:default_base_url) in
+    let config =
+      Hl_client.Config.create
+        ~address:(Option.value address ~default:(Address.of_string default_address))
+        ~base_url
+        ()
+    in
+    if Client.is_mainnet (Client.read_only config)
+    then
+      Or_error.error_s
+        [%message "refusing to trade on mainnet" ~base_url:(Uri.to_string base_url)]
+    else Ok (Client.trading config))
+;;
+
 (* [Live_hl.connect_and_run], keeping the loop's tick-to-order latency for the report. *)
 let connect_and_run client ~symbol ~params ~summary_interval ~stop =
-  let%bind.Deferred.Or_error venue = Hl_venue.connect client in
+  let%bind.Deferred.Or_error venue = Hl_venue.Trading.connect client in
   let prepare =
     let open Deferred.Or_error.Let_syntax in
-    let%bind instrument = Hl_venue.instrument venue symbol in
+    let%bind instrument = Hl_venue.Trading.instrument venue symbol in
     let%bind mid = Live_hl.first_mid venue symbol in
     Deferred.return (params instrument ~mid)
   in
   match%bind prepare with
   | Error _ as error ->
-    let%map () = Hl_venue.close venue in
+    let%map () = Hl_venue.Trading.close venue in
     error
   | Ok params ->
     let%bind.Deferred.Or_error live =
       match%bind Live_hl.start venue { Live.Config.params; summary_interval } with
       | Ok _ as ok -> return ok
       | Error _ as error ->
-        let%map () = Hl_venue.close venue in
+        let%map () = Hl_venue.Trading.close venue in
         error
     in
     let%bind () = stop in
@@ -93,20 +119,32 @@ let command =
     ~summary:"Market maker for hl-sim (and Hyperliquid-compatible APIs)"
     ~readme:(fun () ->
       "Quotes a post-only ladder around the microprice of one coin, skewed by inventory, \
-       and requotes as the book moves. Exchange requests carry the X-Address header \
-       (hl-sim's acting account). On SIGINT/SIGTERM, or after -run-for seconds, it \
-       cancels every resting order and prints a report (a second SIGINT exits at once).")
+       and requotes as the book moves. Against hl-sim, exchange requests are unsigned \
+       and carry the X-Address header (hl-sim's acting account). With -testnet they are \
+       signed with the key in HL_PRIVATE_KEY and the account is the key's. Mainnet is \
+       refused. On SIGINT/SIGTERM, or after -run-for seconds, it cancels every resting \
+       order and prints a report (a second SIGINT exits at once).")
     (let%map_open.Command base_url =
        flag
          "-base-url"
-         (optional_with_default "http://localhost:3000" string)
+         (optional string)
          ~doc:
-           "URL HTTP API root; the websocket is <url>/ws (default http://localhost:3000)"
+           (sprintf
+              "URL HTTP API root; the websocket is <url>/ws (default %s)"
+              default_base_url)
+     and testnet =
+       flag
+         "-testnet"
+         no_arg
+         ~doc:" trade on Hyperliquid's testnet, signing with the key in HL_PRIVATE_KEY"
      and address =
        flag
          "-address"
-         (optional_with_default (Address.of_string default_address) address_arg)
-         ~doc:(sprintf "ADDRESS account to trade as (default %s)" default_address)
+         (optional address_arg)
+         ~doc:
+           (sprintf
+              "ADDRESS account to trade as (default %s, or the key's with -testnet)"
+              default_address)
      and coin =
        flag
          "-coin"
@@ -173,15 +211,10 @@ let command =
      fun () ->
        Log.Global.set_output [ Log.Output.stderr () ];
        Log.Global.set_level log_level;
-       let client =
-         Hl_client.Config.create ~address ~base_url:(Uri.of_string base_url) ()
+       let%bind.Deferred.Or_error client =
+         Deferred.return (trading_handle ~testnet ~base_url ~address)
        in
-       Log.Global.info_s
-         [%message
-           "connecting"
-             (address : Address.t)
-             ~base_url:(Uri.to_string client.base_url)
-             ~ws_url:(Uri.to_string client.ws_url)];
+       Log.Global.info_s (List [ Atom "connecting"; Hl_client.Client.sexp_of_t client ]);
        let stop =
          Mm_core.Live.stop_signal ?run_for:(Option.map run_for ~f:Time_ns.Span.of_sec) ()
        in
