@@ -89,8 +89,11 @@ runs hl-mm with `-run-for 60`, prints the report and stops the simulator. It ass
 hl-mm is checked out inside a dune workspace next to `hl-sim`, `hl-client`,
 `hl-protocol`, `venue-net`, `mm-core`, `fixed-decimal`, `order-book` and `exchange-core` (a parent
 directory holding a `dune-workspace` file with `(lang dune 3.17)`), so everything builds
-from source without opam pins. `OPAM_SWITCH`, `DUNE_BUILD_DIR`, `SEED`, `RUN_FOR`, `PORT` and `LOG_DIR`
-override the defaults; extra arguments go to hl-mm.
+from source without opam pins. `OPAM_SWITCH`, `DUNE_BUILD_DIR`, `SEED`, `RUN_FOR`, `PORT`, `LOG_DIR` and
+`RESPONSE_DELAY_MS` (hl-sim's `-response-delay-ms`, the delay of every `/exchange` ack)
+override the defaults; extra arguments go to hl-mm. At the end it prints the most resting
+quotes per side seen in a summary line; more than `-levels` would mean an order was placed
+twice.
 
 ### Example run
 
@@ -122,6 +125,15 @@ difference is the simulator marking positions at its reference price rather than
 mid. Runs are not bit-for-bit reproducible: the seed fixes the noise flow, but the timing
 of hl-mm's requests changes the matching.
 
+With slow acks (`RESPONSE_DELAY_MS=300 scripts/e2e.sh -summary-secs 1`) the loop sends
+fewer plans, since each one waits for its acks, but never holds more than three quotes a
+side:
+
+| ack delay | plans | placed | rejected | cancelled | fills | most resting (bids/asks) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 ms | 147 | 405 | 1 | 343 | 64 | 3 / 3 |
+| 300 ms | 81 | 257 | 6 | 218 | 44 | 3 / 3 |
+
 The cancellation count comes from `canceled` order updates, so it also includes IOC
 remainders. The account value is from the last clearinghouse snapshot that decoded: with
 a tiny position on a large balance the simulator reports a `liquidationPx` with 11
@@ -135,7 +147,9 @@ statuses, order requests) and an integration test (`test/test_live.ml`) that sta
 `Hl_sim.Server` on a free port with a static book from a second account, runs
 `Mm_core.Live.Make (Hl_venue)` until it quotes the expected ladder, sends a taker order
 into the best bid, checks the maker fill reaches the inventory, then stops and checks that
-no orders are left resting. The strategy's own tests are in mm-core.
+no orders are left resting. A second run delays every `/exchange` ack by 500 ms (longer
+than the 200 ms requote interval) while the orders rest at once, moves the book to force a
+requote, and checks that the ladder still has exactly one order per level. The strategy's own tests are in mm-core.
 
 ## Modules
 
