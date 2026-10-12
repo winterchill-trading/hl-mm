@@ -2,6 +2,8 @@ open! Core
 open! Async
 open Hl_protocol
 open Hl_mm
+module Live = Mm_core.Live
+module Live_hl = Live.Make (Hl_venue)
 
 let%expect_test "tick_of_mid" =
   List.iter
@@ -11,7 +13,7 @@ let%expect_test "tick_of_mid" =
         "%s (szDecimals %d): %s\n"
         mid
         sz_decimals
-        (Price.to_string (Live.Instrument.tick_of_mid ~sz_decimals (Price.of_string mid))));
+        (Price.to_string (Hl_venue.tick_of_mid ~sz_decimals (Price.of_string mid))));
   [%expect
     {|
     100000 (szDecimals 5): 1
@@ -79,16 +81,24 @@ let%expect_test "live loop quotes, fills and cancels against hl-sim" =
   in
   print_s [%sexp (ok_exn response : Exchange_response.t)];
   [%expect {| (Ok (Order ((Resting (oid 1) (cloid ())) (Resting (oid 2) (cloid ()))))) |}];
+  let%bind venue = Hl_venue.connect (client mm) >>| ok_exn in
+  let%bind instrument = Hl_venue.instrument venue (Coin.of_string "BTC") >>| ok_exn in
+  print_s [%sexp (instrument : Exchange_core.Instrument.t)];
+  [%expect
+    {|
+    ((symbol BTC) (size_decimals 5) (price_tick 1) (max_significant_figures (5))
+     (max_leverage 40) (fees ((taker_bps 3.5) (maker_bps 1))))
+    |}];
   let%bind live =
-    Live.start
-      { client = client mm
-      ; params = { Params.btc with requote_interval_ms = 200 }
+    Live_hl.start
+      venue
+      { params = { Mm_core.Params.btc with requote_interval_ms = 200 }
       ; summary_interval = Time_ns.Span.of_int_sec 60
       }
     >>| ok_exn
   in
   let%bind () =
-    wait_until ~what:"quotes" (fun () -> (Live.report live).orders_placed >= 6)
+    wait_until ~what:"quotes" (fun () -> (Live_hl.report live).orders_placed >= 6)
   in
   (* 3 bps around the microprice, then 2 bps per level, on the hl-mm account. *)
   let%bind () = print_open_orders (client mm) in
@@ -110,8 +120,8 @@ let%expect_test "live loop quotes, fills and cancels against hl-sim" =
   print_s [%sexp (ok_exn response : Exchange_response.t)];
   [%expect
     {| (Ok (Order ((Filled (oid 9) (total_sz 0.001) (avg_px 99970) (cloid ()))))) |}];
-  let%bind () = wait_until ~what:"fill" (fun () -> (Live.report live).fills >= 1) in
-  let%bind report = Live.stop live in
+  let%bind () = wait_until ~what:"fill" (fun () -> (Live_hl.report live).fills >= 1) in
+  let%bind report = Live_hl.stop live in
   print_s
     [%message
       ""
@@ -121,11 +131,12 @@ let%expect_test "live loop quotes, fills and cancels against hl-sim" =
         ~volume:(report.volume : Usd.t)
         ~fees:(report.fees : Usd.t)
         ~placed_at_least_6:(report.orders_placed >= 6 : bool)
-        ~mode:(report.mode : Strategy.Mode.t)];
+        ~cancelled_at_least_5:(report.orders_cancelled >= 5 : bool)
+        ~mode:(report.mode : Mm_core.Strategy.Mode.t)];
   [%expect
     {|
     ((fills 1) (maker_fills 1) (position 0.001) (volume 99.97) (fees 0.009997)
-     (placed_at_least_6 true) (mode Running))
+     (placed_at_least_6 true) (cancelled_at_least_5 true) (mode Running))
     |}];
   (* Shutdown cancelled everything. *)
   let%bind () = print_open_orders (client mm) in
