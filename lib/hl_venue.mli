@@ -4,7 +4,7 @@
     - [connect] needs [Hl_client.Config.address]: it fetches [meta] (asset indices), opens
       the websocket and subscribes to [orderUpdates] and [userFills] for the address.
       Exchange requests carry the [X-Address] header (the simulator's convention); they
-      are unsigned.
+      are signed only through {!Trading}.
     - Timestamps are converted from milliseconds to nanoseconds.
     - Fills are de-duplicated by trade id; fills from the [userFills] snapshot that
       happened before [connect] are dropped.
@@ -19,6 +19,16 @@ open! Async
 open Hl_protocol
 (** Over a bare config, requests are unsigned (the simulator's convention). *)
 include Mm_core.Venue.S with type config = Hl_client.Config.t
+
+(** The same venue over a [Hl_client.Client.trading] handle, which signs exchange requests
+    when it holds a key: the way to trade on the real exchange
+    ([Hl_client.Client.trading_of_env (Hl_client.Config.testnet ())] reads
+    [HL_PRIVATE_KEY]). The handle's address (the key's, unless the config names one) is
+    the account. A [read_only] handle does not type-check as a [config]. *)
+module Trading :
+  Mm_core.Venue.S
+  with type t = t
+   and type config = Hl_client.Client.trading Hl_client.Client.t
 
 (** [tick_of_mid ~sz_decimals mid] is the price increment Hyperliquid accepts at [mid]
     (integers or 5 significant figures, at most [6 - sz_decimals] decimals). *)

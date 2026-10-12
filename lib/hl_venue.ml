@@ -431,3 +431,21 @@ type config = Hl_client.Config.t
 
 (* Unsigned: hl-sim takes the account from the X-Address header. *)
 let connect config = connect_trading (Client.trading config)
+
+module Trading = struct
+  type nonrec t = t
+  type config = Client.trading Client.t
+
+  let connect = connect_trading
+  let instrument = instrument
+  let books = books
+  let fills = fills
+  let order_updates = order_updates
+  let open_orders = open_orders
+  let account = account
+  let place = place
+  let cancel = cancel
+  let cancel_all = cancel_all
+  let on_reconnect = on_reconnect
+  let close = close
+end
