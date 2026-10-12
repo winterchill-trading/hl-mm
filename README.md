@@ -23,7 +23,10 @@ from this repository's `hl-mm` library.
 opam switch create 5.2.0+ox --repos ox=git+https://github.com/oxcaml/opam-repository.git,default
 opam pin add -n fixed-decimal https://github.com/winterchill-trading/fixed-decimal.git
 opam pin add -n exchange-core https://github.com/winterchill-trading/exchange-core.git
+opam pin add -n parquet https://github.com/winterchill-trading/parquet.git
+opam pin add -n market-data https://github.com/winterchill-trading/market-data.git
 opam pin add -n hl-protocol https://github.com/winterchill-trading/hl-protocol.git
+opam pin add -n venue-net https://github.com/winterchill-trading/venue-net.git
 opam pin add -n hl-client https://github.com/winterchill-trading/hl-client.git
 opam pin add -n mm-core https://github.com/winterchill-trading/mm-core.git
 opam pin add -n order-book https://github.com/winterchill-trading/order-book.git   # tests only
@@ -32,6 +35,8 @@ opam pin add -n hl-sim https://github.com/winterchill-trading/hl-sim.git        
 opam install . --deps-only --with-test
 dune build && dune test
 ```
+
+CI pins the same packages in this order and runs `shellcheck scripts/*.sh`.
 
 ## Running
 
