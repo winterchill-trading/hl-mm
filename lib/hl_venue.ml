@@ -236,10 +236,10 @@ module Convert = struct
   ;;
 end
 
-type config = Hl_client.Config.t
+module Client = Hl_client.Client
 
 type t =
-  { client : Hl_client.Config.t
+  { client : Client.trading Client.t
   ; address : Address.t
   ; ws : Hl_client.Ws.t
   ; meta : Meta.t
@@ -279,15 +279,15 @@ let on_message t (message : Ws_message.t) =
   | Subscription_response _ | Trades _ | All_mids _ | Pong | Unknown _ -> ()
 ;;
 
-let connect (client : config) =
-  match client.address with
+let connect_trading (client : Client.trading Client.t) =
+  match (Client.config client).address with
   | None -> Deferred.Or_error.error_string "Hl_venue.connect: the config has no address"
   | Some address ->
     let open Deferred.Or_error.Let_syntax in
-    let%bind meta = Hl_client.Info.meta client in
+    let%bind meta = Client.meta client in
     let reconnect_hooks = Queue.create () in
     let on_reconnect () = Queue.iter reconnect_hooks ~f:(fun f -> f ()) in
-    let%bind ws = Hl_client.Ws.connect ~on_reconnect client in
+    let%bind ws = Hl_client.Ws.connect ~on_reconnect (Client.config client) in
     let fills_r, fills_w = Pipe.create () in
     let updates_r, updates_w = Pipe.create () in
     let t =
@@ -325,7 +325,7 @@ let instrument t coin =
     | Some asset_meta -> return asset_meta
     | None -> Deferred.Or_error.error_s [%message "unknown coin" (coin : Coin.t)]
   in
-  let%bind book = Hl_client.Info.l2_book t.client coin in
+  let%bind book = Client.l2_book t.client coin in
   let%map mid =
     match L2_book.best_bid book, L2_book.best_ask book with
     | Some bid, Some ask -> return (Price.div_int Price.(bid.px + ask.px) 2)
@@ -351,13 +351,13 @@ let fills t = t.fills_r
 let order_updates t = t.updates_r
 
 let open_orders t coin =
-  let%map.Deferred.Or_error orders = Hl_client.Info.open_orders t.client in
+  let%map.Deferred.Or_error orders = Client.open_orders t.client in
   List.filter_map orders ~f:(fun (o : Open_order.t) ->
     Option.some_if (Coin.equal o.coin coin) (Convert.open_order o))
 ;;
 
 let account t =
-  Hl_client.Info.clearinghouse_state t.client
+  Client.clearinghouse_state t.client
   |> Deferred.Or_error.map ~f:(Convert.account t.address)
 ;;
 
@@ -368,7 +368,7 @@ let place t requests =
     if List.is_empty to_send
     then Deferred.Or_error.return []
     else (
-      match%map Hl_client.Exchange.place_orders t.client to_send with
+      match%map Client.place_orders t.client to_send with
       | Error _ as error -> error
       | Ok (Ok (Order statuses)) when List.length statuses = List.length to_send ->
         Ok (List.map statuses ~f:Convert.order_status)
@@ -395,7 +395,7 @@ let cancel t coin oids =
   | None, _ -> Deferred.Or_error.error_s [%message "unknown coin" (coin : Coin.t)]
   | Some asset, oids ->
     let cancels = List.map oids ~f:(fun oid -> { Cancel_request.asset; oid }) in
-    (match%map Hl_client.Exchange.cancel t.client cancels with
+    (match%map Client.cancel t.client cancels with
      | Error _ as error -> error
      | Ok (Ok (Cancel statuses)) ->
        (* Already filled or cancelled orders are not an error. *)
@@ -426,3 +426,8 @@ let close t =
     Pipe.close t.updates_w;
     List.iter t.book_writers ~f:(fun (_, w) -> Pipe.close w))
 ;;
+
+type config = Hl_client.Config.t
+
+(* Unsigned: hl-sim takes the account from the X-Address header. *)
+let connect config = connect_trading (Client.trading config)

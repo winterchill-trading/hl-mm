@@ -3,8 +3,8 @@
 
     - [connect] needs [Hl_client.Config.address]: it fetches [meta] (asset indices), opens
       the websocket and subscribes to [orderUpdates] and [userFills] for the address.
-      Exchange requests carry the [X-Address] header (the simulator's convention) and are
-      unsigned.
+      Exchange requests carry the [X-Address] header (the simulator's convention); they
+      are unsigned.
     - Timestamps are converted from milliseconds to nanoseconds.
     - Fills are de-duplicated by trade id; fills from the [userFills] snapshot that
       happened before [connect] are dropped.
@@ -17,6 +17,7 @@
 open! Core
 open! Async
 open Hl_protocol
+(** Over a bare config, requests are unsigned (the simulator's convention). *)
 include Mm_core.Venue.S with type config = Hl_client.Config.t
 
 (** [tick_of_mid ~sz_decimals mid] is the price increment Hyperliquid accepts at [mid]
