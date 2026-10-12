@@ -83,7 +83,7 @@ README.
 `scripts/e2e.sh` builds hl-sim and hl-mm, starts the simulator (seed 42) on a free port,
 runs hl-mm with `-run-for 60`, prints the report and stops the simulator. It assumes
 hl-mm is checked out inside a dune workspace next to `hl-sim`, `hl-client`,
-`hl-protocol`, `mm-core`, `fixed-decimal`, `order-book` and `exchange-core` (a parent
+`hl-protocol`, `venue-net`, `mm-core`, `fixed-decimal`, `order-book` and `exchange-core` (a parent
 directory holding a `dune-workspace` file with `(lang dune 3.17)`), so everything builds
 from source without opam pins. `OPAM_SWITCH`, `DUNE_BUILD_DIR`, `SEED`, `RUN_FOR`, `PORT` and `LOG_DIR`
 override the defaults; extra arguments go to hl-mm.
