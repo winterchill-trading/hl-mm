@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: shellcheck scripts/*.sh
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ocaml-variants.5.2.0+ox
