@@ -177,10 +177,10 @@ side:
 | 300 ms | 81 | 257 | 6 | 218 | 44 | 3 / 3 |
 
 The cancellation count comes from `canceled` order updates, so it also includes IOC
-remainders. The account value is from the last clearinghouse snapshot that decoded: with
-a tiny position on a large balance the simulator reports a `liquidationPx` with 11
-integer digits, which fixed-decimal's parser rejects, and those snapshots are logged as
-errors and skipped.
+remainders. The account value is from the last clearinghouse snapshot. With a tiny position on a
+large balance the simulator reports a `liquidationPx` with 11 integer digits; since
+hl-protocol decodes `liquidationPx` as an option, such values decode as `None` and the
+snapshot is kept.
 
 ## Tests
 
