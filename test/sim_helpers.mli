@@ -29,6 +29,10 @@ type sim =
 
 (** Starts hl-sim on a free port (logging off) and rests a static book 20 bps wide around
     100000 (0.01 at 99900 and 100100) from [maker]. *)
-val start_sim : ?config:Hl_sim.Server.Config.t -> unit -> sim Deferred.t
+val start_sim
+  :  ?config:Hl_sim.Server.Config.t
+  -> ?journal:Hl_sim.Journal.t
+  -> unit
+  -> sim Deferred.t
 
 val stop_sim : sim -> unit Deferred.t

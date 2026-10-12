@@ -46,9 +46,9 @@ type sim =
   ; client : Address.t -> Hl_client.Config.t
   }
 
-let start_sim ?config () =
+let start_sim ?config ?journal () =
   Log.Global.set_output [];
-  let server = Hl_sim.Server.create ?config (Hl_sim.Adapt.create_exchange ()) in
+  let server = Hl_sim.Server.create ?config ?journal (Hl_sim.Adapt.create_exchange ()) in
   let%bind http = Hl_sim.Server.listen server ~port:0 in
   let base_url =
     Uri.make ~scheme:"http" ~host:"127.0.0.1" ~port:(Hl_sim.Server.port http) ()
