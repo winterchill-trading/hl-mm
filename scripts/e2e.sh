@@ -80,3 +80,9 @@ echo "e2e: running hl-mm for ${run_for}s, log $log_dir/mm.log" >&2
 "$mm_exe" -base-url "http://127.0.0.1:$port" -run-for "$run_for" "$@" 2>"$log_dir/mm.log"
 echo "e2e: hl-mm log: $(grep -c ' fill ' "$log_dir/mm.log" || true) fill lines," \
   "$(grep -c 'plan #' "$log_dir/mm.log" || true) plans; logs in $log_dir" >&2
+# Double placement shows up as more resting quotes on a side than -levels.
+grep 'summary:' "$log_dir/mm.log" \
+  | sed 's/.*bids \[\(.*\)\] asks \[\(.*\)\].*/\1|\2/' \
+  | awk -F'|' '{ nb = split($1, b, " "); na = split($2, a, " ")
+                 if (nb > mb) mb = nb; if (na > ma) ma = na }
+               END { printf "e2e: most resting quotes in a summary: %d bids, %d asks\n", mb, ma }' >&2
