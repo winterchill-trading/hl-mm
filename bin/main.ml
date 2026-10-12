@@ -30,6 +30,9 @@ let params_for
   ~skew_bps
   ~max_position
   ~requote_ms
+  ~max_actions_per_sec
+  ~soft_max_position
+  ~params_file
   =
   Or_error.try_with_join (fun () ->
     let base =
@@ -39,14 +42,24 @@ let params_for
         ?order_size:(Option.map size ~f:Size.of_string)
         ?max_position:(Option.map max_position ~f:Size.of_string)
     in
-    Params.validate
+    let flags : Params.t =
       { base with
         levels = Option.value levels ~default:base.levels
       ; base_half_spread_bps =
           Option.value half_spread_bps ~default:base.base_half_spread_bps
       ; skew_bps = Option.value skew_bps ~default:base.skew_bps
       ; requote_interval_ms = Option.value requote_ms ~default:base.requote_interval_ms
-      })
+      ; max_actions_per_sec =
+          Option.value max_actions_per_sec ~default:base.max_actions_per_sec
+      ; soft_max_position =
+          Option.first_some
+            (Option.map soft_max_position ~f:Size.of_string)
+            base.soft_max_position
+      }
+    in
+    match params_file with
+    | None -> Params.validate flags
+    | Some path -> Params_file.load path ~base:flags)
 ;;
 
 (* [Live_hl.connect_and_run], keeping the loop's tick-to-order latency for the report. *)
@@ -125,6 +138,22 @@ let command =
          "-requote-ms"
          (optional int)
          ~doc:"MS requote and open-orders poll interval (default 1000)"
+     and max_actions_per_sec =
+       flag
+         "-max-actions-per-sec"
+         (optional int)
+         ~doc:"N kill switch: more cancels and places than this in a second (default 100)"
+     and soft_max_position =
+       flag
+         "-soft-max-position"
+         (optional string)
+         ~doc:
+           "SIZE beyond this position stop quoting the side that grows it (default none)"
+     and params_file =
+       flag
+         "-params"
+         (optional string)
+         ~doc:"FILE parameter overrides, a sexp of (field value) pairs (see README)"
      and run_for =
        flag
          "-run-for"
@@ -167,7 +196,10 @@ let command =
                 ~half_spread_bps
                 ~skew_bps
                 ~max_position
-                ~requote_ms)
+                ~requote_ms
+                ~max_actions_per_sec
+                ~soft_max_position
+                ~params_file)
            ~summary_interval:(Time_ns.Span.of_sec summary_secs)
            ~stop
        in
