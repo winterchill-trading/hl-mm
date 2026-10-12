@@ -40,7 +40,8 @@ let%expect_test "live loop quotes, fills and cancels against hl-sim" =
   let%bind live =
     Live_hl.start
       venue
-      { params = { Mm_core.Params.btc with requote_interval_ms = 200 }
+      { params =
+          { Mm_core.Params.btc with requote_interval_ms = Time_ns.Span.of_int_ms 200 }
       ; summary_interval = Time_ns.Span.of_int_sec 60
       }
     >>| ok_exn
@@ -110,7 +111,8 @@ let%expect_test "slow acks: no order is placed twice" =
   let%bind live =
     Live_hl.start
       venue
-      { params = { Mm_core.Params.btc with requote_interval_ms = 200 }
+      { params =
+          { Mm_core.Params.btc with requote_interval_ms = Time_ns.Span.of_int_ms 200 }
       ; summary_interval = Time_ns.Span.of_int_sec 60
       }
     >>| ok_exn

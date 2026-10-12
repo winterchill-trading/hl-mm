@@ -6,7 +6,8 @@ module Bugged = Bugged_venue.Make (Hl_venue)
 module Live_bugged = Mm_core.Live.Make (Bugged)
 
 let config =
-  { Mm_core.Live.Config.params = { Mm_core.Params.btc with requote_interval_ms = 200 }
+  { Mm_core.Live.Config.params =
+      { Mm_core.Params.btc with requote_interval_ms = Time_ns.Span.of_int_ms 200 }
   ; summary_interval = Time_ns.Span.of_int_sec 60
   }
 ;;

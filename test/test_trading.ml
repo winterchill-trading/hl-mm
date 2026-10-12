@@ -43,7 +43,8 @@ let%expect_test "a signed trading handle quotes on hl-sim as the key's account" 
   let%bind live =
     Live_trading.start
       venue
-      { params = { Mm_core.Params.btc with requote_interval_ms = 200 }
+      { params =
+          { Mm_core.Params.btc with requote_interval_ms = Time_ns.Span.of_int_ms 200 }
       ; summary_interval = Time_ns.Span.of_int_sec 60
       }
     >>| ok_exn
