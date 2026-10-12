@@ -38,6 +38,10 @@ dune build && dune test
 
 CI pins the same packages in this order and runs `shellcheck scripts/*.sh`.
 
+CI installs the pinned siblings and the opam dependencies through the shared
+[ox-setup](https://github.com/winterchill-trading/infra/blob/main/docs/ci.md) action, which
+caches the built opam switch between runs.
+
 ## Running
 
 ```sh
