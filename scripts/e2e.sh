@@ -8,7 +8,7 @@
 #   <root>/dune-workspace      (lang dune 3.17)
 #   <root>/dune-project        (lang dune 3.17)
 #   <root>/hl-mm  <root>/hl-sim  <root>/hl-client  <root>/hl-protocol
-#   <root>/fixed-decimal  <root>/order-book
+#   <root>/fixed-decimal  <root>/order-book  <root>/exchange-core
 #
 # Environment overrides: OPAM_SWITCH (5.2.0+ox), DUNE_BUILD_DIR (<root>/_build-hl-mm),
 # SEED (42), RUN_FOR (60), PORT (a free port), LOG_DIR (a temporary directory).
@@ -17,7 +17,7 @@ set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 root="$(cd "$repo/.." && pwd)"
-for dep in hl-sim hl-client hl-protocol fixed-decimal order-book; do
+for dep in hl-sim hl-client hl-protocol fixed-decimal order-book exchange-core; do
   if [[ ! -d "$root/$dep" ]]; then
     echo "e2e: $root/$dep is missing; clone it next to hl-mm (see the header of $0)" >&2
     exit 1
