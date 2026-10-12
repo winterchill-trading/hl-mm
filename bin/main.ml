@@ -49,6 +49,32 @@ let params_for
       })
 ;;
 
+(* [Live_hl.connect_and_run], keeping the loop's tick-to-order latency for the report. *)
+let connect_and_run client ~symbol ~params ~summary_interval ~stop =
+  let%bind.Deferred.Or_error venue = Hl_venue.connect client in
+  let prepare =
+    let open Deferred.Or_error.Let_syntax in
+    let%bind instrument = Hl_venue.instrument venue symbol in
+    let%bind mid = Live_hl.first_mid venue symbol in
+    Deferred.return (params instrument ~mid)
+  in
+  match%bind prepare with
+  | Error _ as error ->
+    let%map () = Hl_venue.close venue in
+    error
+  | Ok params ->
+    let%bind.Deferred.Or_error live =
+      match%bind Live_hl.start venue { Live.Config.params; summary_interval } with
+      | Ok _ as ok -> return ok
+      | Error _ as error ->
+        let%map () = Hl_venue.close venue in
+        error
+    in
+    let%bind () = stop in
+    let%map report = Live_hl.stop live in
+    Ok (report, Live_hl.tick_to_order live)
+;;
+
 let command =
   Command.async_or_error
     ~summary:"Market maker for hl-sim (and Hyperliquid-compatible APIs)"
@@ -130,8 +156,8 @@ let command =
        let stop =
          Mm_core.Live.stop_signal ?run_for:(Option.map run_for ~f:Time_ns.Span.of_sec) ()
        in
-       let%map.Deferred.Or_error report =
-         Live_hl.connect_and_run
+       let%map.Deferred.Or_error report, tick_to_order =
+         connect_and_run
            client
            ~symbol:(Coin.of_string coin)
            ~params:
@@ -146,7 +172,13 @@ let command =
            ~stop
        in
        print_endline "--- hl-mm report ---";
-       print_endline (Mm_core.Live.Report.to_string_hum report))
+       print_endline (Mm_core.Live.Report.to_string_hum report);
+       printf
+         "tick to order    %s\n"
+         (Option.value_map
+            tick_to_order
+            ~default:"-"
+            ~f:Latency_histogram.Stats.to_string_hum))
 ;;
 
 let () = Command_unix.run command
