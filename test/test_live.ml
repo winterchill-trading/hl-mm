@@ -2,6 +2,7 @@ open! Core
 open! Async
 open Hl_protocol
 open Hl_mm
+open Sim_helpers
 module Live = Mm_core.Live
 module Live_hl = Live.Make (Hl_venue)
 
@@ -25,62 +26,9 @@ let%expect_test "tick_of_mid" =
   return ()
 ;;
 
-let mm = Address.of_string "0x0000000000000000000000000000000000006d6d"
-let maker = Address.of_string "0x00000000000000000000000000000000000000b0"
-let taker = Address.of_string "0x00000000000000000000000000000000000000c0"
-
-let order ~is_buy ~px ~sz ~tif =
-  { Order_request.asset = Asset.of_int 0
-  ; is_buy
-  ; limit_px = Price.of_string px
-  ; sz = Size.of_string sz
-  ; reduce_only = false
-  ; order_type = Limit { tif }
-  ; cloid = None
-  }
-;;
-
-let rec wait_until ?(timeout = Time_ns.Span.of_int_sec 10) ~what f =
-  if f ()
-  then return ()
-  else if Time_ns.Span.(timeout <= zero)
-  then raise_s [%message "timed out waiting" what]
-  else (
-    let step = Time_ns.Span.of_int_ms 20 in
-    let%bind () = Clock_ns.after step in
-    wait_until ~timeout:Time_ns.Span.(timeout - step) ~what f)
-;;
-
-let print_open_orders config =
-  let%map orders = Hl_client.Info.open_orders config >>| ok_exn in
-  List.sort orders ~compare:(fun (a : Open_order.t) b ->
-    Price.descending a.limit_px b.limit_px)
-  |> List.iter ~f:(fun (o : Open_order.t) ->
-    printf
-      "%s %s@%s\n"
-      (Side.to_wire o.side)
-      (Size.to_string o.sz)
-      (Price.to_string o.limit_px))
-;;
-
 let%expect_test "live loop quotes, fills and cancels against hl-sim" =
-  Log.Global.set_output [];
-  let server = Hl_sim.Server.create (Hl_sim.Adapt.create_exchange ()) in
-  let%bind http = Hl_sim.Server.listen server ~port:0 in
-  let base_url =
-    Uri.make ~scheme:"http" ~host:"127.0.0.1" ~port:(Hl_sim.Server.port http) ()
-  in
-  let client address = Hl_client.Config.create ~address ~base_url () in
-  (* A static two-sided book, 20 bps wide around 100000. *)
-  let%bind response =
-    Hl_client.Exchange.place_orders
-      (client maker)
-      [ order ~is_buy:true ~px:"99900" ~sz:"0.01" ~tif:Gtc
-      ; order ~is_buy:false ~px:"100100" ~sz:"0.01" ~tif:Gtc
-      ]
-  in
-  print_s [%sexp (ok_exn response : Exchange_response.t)];
-  [%expect {| (Ok (Order ((Resting (oid 1) (cloid ())) (Resting (oid 2) (cloid ()))))) |}];
+  let%bind sim = start_sim () in
+  let client = sim.client in
   let%bind venue = Hl_venue.connect (client mm) >>| ok_exn in
   let%bind instrument = Hl_venue.instrument venue (Coin.of_string "BTC") >>| ok_exn in
   print_s [%sexp (instrument : Exchange_core.Instrument.t)];
@@ -145,31 +93,19 @@ let%expect_test "live loop quotes, fills and cancels against hl-sim" =
   (* Shutdown cancelled everything. *)
   let%bind () = print_open_orders (client mm) in
   [%expect {| |}];
-  Cohttp_async.Server.close http
+  stop_sim sim
 ;;
 
 let%expect_test "slow acks: no order is placed twice" =
-  Log.Global.set_output [];
   (* Every /exchange ack arrives 500ms late, longer than the 200ms requote interval; the
      orders themselves rest at once and their updates reach the websocket first. *)
-  let server =
-    Hl_sim.Server.create
+  let%bind sim =
+    start_sim
       ~config:
         { Hl_sim.Server.Config.default with response_delay = Time_ns.Span.of_int_ms 500 }
-      (Hl_sim.Adapt.create_exchange ())
+      ()
   in
-  let%bind http = Hl_sim.Server.listen server ~port:0 in
-  let base_url =
-    Uri.make ~scheme:"http" ~host:"127.0.0.1" ~port:(Hl_sim.Server.port http) ()
-  in
-  let client address = Hl_client.Config.create ~address ~base_url () in
-  let%bind (_ : Exchange_response.t Or_error.t) =
-    Hl_client.Exchange.place_orders
-      (client maker)
-      [ order ~is_buy:true ~px:"99900" ~sz:"0.01" ~tif:Gtc
-      ; order ~is_buy:false ~px:"100100" ~sz:"0.01" ~tif:Gtc
-      ]
-  in
+  let client = sim.client in
   let%bind venue = Hl_venue.connect (client mm) >>| ok_exn in
   let%bind live =
     Live_hl.start
@@ -222,5 +158,5 @@ let%expect_test "slow acks: no order is placed twice" =
   [%expect {| ((plans 2) (placed 8) (rejected 0) (cancelled 8)) |}];
   let%bind () = print_open_orders (client mm) in
   [%expect {| |}];
-  Cohttp_async.Server.close http
+  stop_sim sim
 ;;
