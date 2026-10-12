@@ -30,3 +30,5 @@ jobs:
             hl-sim https://github.com/winterchill-trading/hl-sim.git
       - run: opam exec -- dune build
       - run: opam exec -- dune test
+  obj-magic:
+    uses: winterchill-trading/infra/.github/workflows/obj-magic.yml@main
