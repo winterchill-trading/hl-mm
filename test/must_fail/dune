@@ -1,0 +1,24 @@
+; Compiling read_only_venue.ml must fail with a type error; the compiler output is
+; compared against read_only_venue.expected. Only the interfaces of hl-mm and hl-client
+; are on the include path.
+
+(rule
+ (deps
+  read_only_venue.ml
+  %{cmi:../../lib/hl_mm}
+  %{cmi:../../lib/hl_venue}
+  %{lib:hl-client:hl_client.cmi}
+  %{lib:hl-client:hl_client__.cmi}
+  %{lib:hl-client:hl_client__Client.cmi})
+ (action
+  (with-outputs-to
+   read_only_venue.output
+   (with-accepted-exit-codes
+    2
+    (system
+     "%{ocamlc} -c -color never -I ../../lib/.hl_mm.objs/byte -I \"$(dirname %{lib:hl-client:hl_client.cmi})\" -o read_only_venue.cmo read_only_venue.ml")))))
+
+(rule
+ (alias runtest)
+ (action
+  (diff read_only_venue.expected read_only_venue.output)))

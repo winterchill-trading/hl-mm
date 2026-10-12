@@ -1,0 +1,9 @@
+File "read_only_venue.ml", line 4, characters 33-39:
+4 |   Hl_mm.Hl_venue.Trading.connect handle
+                                     ^^^^^^
+Error: This expression has type "Hl_client.Client.read_only Hl_client.Client.t"
+       but an expression was expected of type
+         "Hl_mm.Hl_venue.Trading.config" =
+           "Hl_client.Client.trading Hl_client.Client.t"
+       Type "Hl_client.Client.read_only" is not compatible with type
+         "Hl_client.Client.trading"
