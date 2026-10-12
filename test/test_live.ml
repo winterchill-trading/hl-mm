@@ -132,11 +132,15 @@ let%expect_test "live loop quotes, fills and cancels against hl-sim" =
         ~fees:(report.fees : Usd.t)
         ~placed_at_least_6:(report.orders_placed >= 6 : bool)
         ~cancelled_at_least_5:(report.orders_cancelled >= 5 : bool)
-        ~mode:(report.mode : Mm_core.Strategy.Mode.t)];
+        ~mode:(report.mode : Mm_core.Strategy.Mode.t)
+        ~tick_to_order_measured:
+          (Option.exists (Live_hl.tick_to_order live) ~f:(fun stats -> stats.count >= 1)
+           : bool)];
   [%expect
     {|
     ((fills 1) (maker_fills 1) (position 0.001) (volume 99.97) (fees 0.009997)
-     (placed_at_least_6 true) (cancelled_at_least_5 true) (mode Running))
+     (placed_at_least_6 true) (cancelled_at_least_5 true) (mode Running)
+     (tick_to_order_measured true))
     |}];
   (* Shutdown cancelled everything. *)
   let%bind () = print_open_orders (client mm) in
