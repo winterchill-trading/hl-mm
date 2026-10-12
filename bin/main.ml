@@ -49,7 +49,11 @@ let params_for
       ; base_half_spread_bps =
           Option.value half_spread_bps ~default:base.base_half_spread_bps
       ; skew_bps = Option.value skew_bps ~default:base.skew_bps
-      ; requote_interval_ms = Option.value requote_ms ~default:base.requote_interval_ms
+      ; requote_interval_ms =
+          Option.value_map
+            requote_ms
+            ~f:Time_ns.Span.of_int_ms
+            ~default:base.requote_interval_ms
       ; max_actions_per_sec =
           Option.value max_actions_per_sec ~default:base.max_actions_per_sec
       ; soft_max_position =
