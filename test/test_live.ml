@@ -163,3 +163,53 @@ let%expect_test "slow acks: no order is placed twice" =
   [%expect {| |}];
   stop_sim sim
 ;;
+
+let%expect_test "a bid through hl-mm's own ask cancels the ask, reported as a cancel" =
+  let%bind sim = start_sim () in
+  let%bind venue = Hl_venue.connect (sim.client mm) >>| ok_exn in
+  let updates = Hl_venue.order_updates venue in
+  let btc = Exchange_core.Symbol.of_string "BTC" in
+  let limit side px =
+    Exchange_core.Order_request.limit
+      btc
+      side
+      ~px:(Price.of_string px)
+      ~size:(Size.of_string "0.001")
+  in
+  let place request =
+    let%map statuses = Hl_venue.place venue [ request ] >>| ok_exn in
+    print_s [%sexp (statuses : Exchange_core.Order_status.t list)]
+  in
+  let next_update () =
+    match%map Pipe.read updates with
+    | `Eof -> print_endline "eof"
+    | `Ok (u : Mm_core.Order_update.t) ->
+      print_s
+        [%message
+          ""
+            ~oid:(u.order_id : Order_id.t)
+            ~side:(u.side : Exchange_core.Side.t)
+            ~px:(u.px : Price.t)
+            ~_:(u.status : Mm_core.Order_update.Status.t)]
+  in
+  let%bind () = place (limit Sell "100050") in
+  let%bind () = next_update () in
+  [%expect
+    {|
+    ((Resting (order_id 3) (client_order_id ())))
+    ((oid 3) (side Sell) (px 100050) New)
+    |}];
+  let%bind () = place (limit Buy "100050") in
+  let%bind () = next_update () in
+  let%bind () = next_update () in
+  [%expect
+    {|
+    ((Resting (order_id 4) (client_order_id ())))
+    ((oid 3) (side Sell) (px 100050) Cancelled)
+    ((oid 4) (side Buy) (px 100050) New)
+    |}];
+  let%bind () = print_open_orders (sim.client mm) in
+  [%expect {| B 0.001@100050 |}];
+  let%bind () = Hl_venue.close venue in
+  stop_sim sim
+;;
