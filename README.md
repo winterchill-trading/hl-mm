@@ -120,6 +120,10 @@ Fund a testnet account from the faucet to quote for real. There is no mainnet sw
   by their wording (unknown wording becomes `Unsupported msg`). Market orders and client
   ids that are not 128-bit hex are rejected locally. `cancel` sends one `cancel` action;
   orders that were already gone are logged at debug, not errors.
+- Self-trade prevention is Hyperliquid's (and hl-sim's): an order that reaches the
+  account's own resting order cancels the resting one, which arrives as a
+  `selfTradeCanceled` order update and is reported to the loop as `Cancelled`; the new
+  order is never rejected for it.
 
 The loop itself (polling, sequencing, coalescing, shutdown) is described in the mm-core
 README.
@@ -191,7 +195,9 @@ statuses, order requests) and an integration test (`test/test_live.ml`) that sta
 into the best bid, checks the maker fill reaches the inventory, then stops and checks that
 no orders are left resting. A second run delays every `/exchange` ack by 500 ms (longer
 than the 200 ms requote interval) while the orders rest at once, moves the book to force a
-requote, and checks that the ladder still has exactly one order per level.
+requote, and checks that the ladder still has exactly one order per level. A third
+places a bid through the account's own ask and checks the ask comes back as `Cancelled`
+and the bid rests.
 
 `test/test_live_bugs.ml` runs the loop through `Bugged_venue.Make (Hl_venue)`, a fault
 injecting wrapper in the style of mm-core's memory venue, against hl-sim with slow acks:
