@@ -9,7 +9,13 @@ let%expect_test "reject messages map back to reasons" =
     ; "Post only order would have immediately matched, bbo was none@99950. asset=0"
     ; "Order must have minimum value of $10. asset=0"
     ; "Insufficient margin to place order. asset=0"
+    ; "Price must be divisible by tick size. asset=0"
     ; "Order has invalid price. asset=0"
+    ; "Order has invalid size. asset=0"
+    ; "Duplicate cloid. asset=0"
+    ; "No liquidity available for market order. asset=0"
+    ; "Order was never placed, already canceled, or filled. asset=0"
+    ; "Cannot modify canceled or filled order"
     ; "Reduce only order would increase position. asset=0"
     ; "Order could not immediately match against any resting orders. asset=0"
     ; "Asset 7 does not exist."
@@ -24,6 +30,12 @@ let%expect_test "reject messages map back to reasons" =
     (Below_min_value (min 10))
     Insufficient_margin
     Invalid_price
+    Invalid_price
+    Invalid_size
+    Duplicate_client_order_id
+    No_liquidity
+    Order_not_found
+    Order_not_found
     Reduce_only_would_increase
     No_liquidity
     Unknown_symbol
