@@ -160,7 +160,8 @@ module Convert = struct
       Post_only_would_cross { best_bid; best_ask })
     else if starts "Order has invalid size"
     then Invalid_size
-    else if starts "Order has invalid price"
+    else if starts "Price must be divisible by tick size"
+            || starts "Order has invalid price"
     then Invalid_price
     else if starts "Duplicate cloid"
     then Duplicate_client_order_id
@@ -178,12 +179,14 @@ module Convert = struct
     else if starts "Insufficient margin"
     then Insufficient_margin
     else if starts "Order could not immediately match"
+            || starts "No liquidity available for market order"
     then No_liquidity
     else if starts "Order would have matched against own"
     then Self_trade
     else if starts "Unknown coin" || String.is_suffix m ~suffix:"does not exist."
     then Unknown_symbol
     else if starts "Cannot modify canceled or filled order"
+            || starts "Order was never placed, already canceled, or filled"
     then Order_not_found
     else Unsupported msg
   ;;
