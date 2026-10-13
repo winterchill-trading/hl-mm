@@ -78,8 +78,11 @@ module Convert = struct
       | Filled -> Filled
       | Rejected -> Rejected
       | Canceled | Margin_canceled -> Cancelled
+      (* Hyperliquid cancels the resting order when the same account's new order reaches
+         it; the strategy sees it as an ordinary cancel and requotes. *)
+      | Other "selfTradeCanceled" -> Cancelled
       | Other s ->
-        (* e.g. "badAloPxRejected", "selfTradeCanceled", "reduceOnlyCanceled" *)
+        (* e.g. "badAloPxRejected", "reduceOnlyCanceled" *)
         if String.is_suffix s ~suffix:"Rejected" then Rejected else Cancelled
     in
     { order_id = o.oid
@@ -181,8 +184,6 @@ module Convert = struct
     else if starts "Order could not immediately match"
             || starts "No liquidity available for market order"
     then No_liquidity
-    else if starts "Order would have matched against own"
-    then Self_trade
     else if starts "Unknown coin" || String.is_suffix m ~suffix:"does not exist."
     then Unknown_symbol
     else if starts "Cannot modify canceled or filled order"
