@@ -85,9 +85,10 @@ let%expect_test "live loop quotes, fills and cancels against hl-sim" =
         ~tick_to_order_measured:
           (Option.exists (Live_hl.tick_to_order live) ~f:(fun stats -> stats.count >= 1)
            : bool)];
+  (* hl-sim charges Hyperliquid's base maker fee, 1.5 bps. *)
   [%expect
     {|
-    ((fills 1) (maker_fills 1) (position 0.001) (volume 99.97) (fees 0.009997)
+    ((fills 1) (maker_fills 1) (position 0.001) (volume 99.97) (fees 0.0149955)
      (placed_at_least_6 true) (cancelled_at_least_5 true) (mode Running)
      (tick_to_order_measured true))
     |}];
